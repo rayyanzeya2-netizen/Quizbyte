@@ -14,10 +14,13 @@ import java.util.List;
 
 /**
  * Dashboard panel for logged-in students.
- * Integrates OOP polymorphic role badges, Collections framework tables,
- * and asynchronous background database workers.
+ * Standardizes button visibility, removes broken font glyphs, and
+ * implements empty-state placeholders for clean academic evaluation.
  */
 public class StudentDashboardPanel extends JPanel {
+
+    private static final String VIEW_TABLE = "TABLE";
+    private static final String VIEW_EMPTY = "EMPTY";
 
     private final MainFrame mainFrame;
     private final QuestionDAO questionDAO;
@@ -29,9 +32,15 @@ public class StudentDashboardPanel extends JPanel {
     private JLabel questionCountLabel;
     private JButton startQuizButton;
 
+    // Past Attempts Components
+    private CardLayout pastAttemptsCardLayout;
+    private JPanel pastAttemptsCardPanel;
     private JTable pastAttemptsTable;
     private DefaultTableModel pastAttemptsModel;
 
+    // Leaderboard Components
+    private CardLayout leaderboardCardLayout;
+    private JPanel leaderboardCardPanel;
     private JTable leaderboardTable;
     private DefaultTableModel leaderboardModel;
 
@@ -59,8 +68,7 @@ public class StudentDashboardPanel extends JPanel {
         welcomeLabel.setFont(UITheme.FONT_TITLE);
         welcomeLabel.setForeground(UITheme.SLATE_DARK);
 
-        // Polymorphic badge representation from Person/User model
-        roleBadgeLabel = new JLabel("[🎓 STUDENT]");
+        roleBadgeLabel = new JLabel("[STUDENT]");
         roleBadgeLabel.setFont(UITheme.FONT_BODY_BOLD);
         roleBadgeLabel.setForeground(UITheme.PRIMARY);
 
@@ -86,6 +94,7 @@ public class StudentDashboardPanel extends JPanel {
         JPanel container = new JPanel(new BorderLayout(0, 16));
         container.setOpaque(false);
 
+        // Subject picker & Quiz Launcher Card
         JPanel launcherCard = UITheme.createCardPanel();
         launcherCard.setLayout(new FlowLayout(FlowLayout.LEFT, 16, 12));
 
@@ -102,7 +111,7 @@ public class StudentDashboardPanel extends JPanel {
         questionCountLabel.setFont(UITheme.FONT_SMALL);
         questionCountLabel.setForeground(UITheme.TEXT_MUTED);
 
-        startQuizButton = UITheme.createSuccessButton("▶  Start Quiz");
+        startQuizButton = UITheme.createPrimaryButton("Start Quiz");
         startQuizButton.addActionListener(e -> {
             String selectedSubject = (String) subjectComboBox.getSelectedItem();
             if (selectedSubject != null) {
@@ -110,7 +119,7 @@ public class StudentDashboardPanel extends JPanel {
             }
         });
 
-        JButton refreshBtn = UITheme.createSecondaryButton("↻  Refresh");
+        JButton refreshBtn = UITheme.createSecondaryButton("Refresh");
         refreshBtn.addActionListener(e -> refreshData());
 
         launcherCard.add(selectLabel);
@@ -134,9 +143,9 @@ public class StudentDashboardPanel extends JPanel {
     }
 
     private JPanel buildPastAttemptsPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(Color.WHITE);
-        panel.setBorder(new EmptyBorder(12, 12, 12, 12));
+        pastAttemptsCardLayout = new CardLayout();
+        pastAttemptsCardPanel = new JPanel(pastAttemptsCardLayout);
+        pastAttemptsCardPanel.setBackground(Color.WHITE);
 
         String[] columns = {"Result ID", "Subject", "Score", "Total", "Percentage", "Grade", "Attempt Date"};
         pastAttemptsModel = new DefaultTableModel(columns, 0) {
@@ -153,14 +162,19 @@ public class StudentDashboardPanel extends JPanel {
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.getViewport().setBackground(Color.WHITE);
 
-        panel.add(scrollPane, BorderLayout.CENTER);
-        return panel;
+        JPanel emptyPanel = UITheme.createEmptyPlaceholder("No past attempts found. Take a quiz to record your score!");
+
+        pastAttemptsCardPanel.add(scrollPane, VIEW_TABLE);
+        pastAttemptsCardPanel.add(emptyPanel, VIEW_EMPTY);
+
+        pastAttemptsCardLayout.show(pastAttemptsCardPanel, VIEW_EMPTY);
+        return pastAttemptsCardPanel;
     }
 
     private JPanel buildLeaderboardPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
-        panel.setBackground(Color.WHITE);
-        panel.setBorder(new EmptyBorder(12, 12, 12, 12));
+        leaderboardCardLayout = new CardLayout();
+        leaderboardCardPanel = new JPanel(leaderboardCardLayout);
+        leaderboardCardPanel.setBackground(Color.WHITE);
 
         String[] columns = {"Rank", "Student", "Subject", "Score", "Percentage", "Grade"};
         leaderboardModel = new DefaultTableModel(columns, 0) {
@@ -177,15 +191,20 @@ public class StudentDashboardPanel extends JPanel {
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.getViewport().setBackground(Color.WHITE);
 
-        panel.add(scrollPane, BorderLayout.CENTER);
-        return panel;
+        JPanel emptyPanel = UITheme.createEmptyPlaceholder("No quiz attempts recorded on the leaderboard yet.");
+
+        leaderboardCardPanel.add(scrollPane, VIEW_TABLE);
+        leaderboardCardPanel.add(emptyPanel, VIEW_EMPTY);
+
+        leaderboardCardLayout.show(leaderboardCardPanel, VIEW_EMPTY);
+        return leaderboardCardPanel;
     }
 
     public void refreshData() {
         User user = mainFrame.getAuthService().getCurrentUser();
         if (user != null) {
             welcomeLabel.setText("Welcome back, " + user.getUsername() + "!");
-            roleBadgeLabel.setText(user.getRoleBadge()); // Polymorphic call
+            roleBadgeLabel.setText(user.getRoleBadge());
         }
 
         loadSubjectsAsync();
@@ -266,21 +285,28 @@ public class StudentDashboardPanel extends JPanel {
                 try {
                     List<QuizResult> results = get();
                     pastAttemptsModel.setRowCount(0);
-                    for (QuizResult r : results) {
-                        String dateStr = (r.getAttemptDate() != null)
-                                ? r.getAttemptDate().toString().substring(0, 19)
-                                : "N/A";
-                        pastAttemptsModel.addRow(new Object[]{
-                                "#" + r.getResultId(),
-                                r.getSubject(),
-                                r.getScore(),
-                                r.getTotalQuestions(),
-                                String.format("%.2f%%", r.getPercentage()),
-                                r.getGrade(),
-                                dateStr
-                        });
+                    if (results == null || results.isEmpty()) {
+                        pastAttemptsCardLayout.show(pastAttemptsCardPanel, VIEW_EMPTY);
+                    } else {
+                        for (QuizResult r : results) {
+                            String dateStr = (r.getAttemptDate() != null)
+                                    ? r.getAttemptDate().toString().substring(0, 19)
+                                    : "N/A";
+                            pastAttemptsModel.addRow(new Object[]{
+                                    "#" + r.getResultId(),
+                                    r.getSubject(),
+                                    r.getScore(),
+                                    r.getTotalQuestions(),
+                                    String.format("%.2f%%", r.getPercentage()),
+                                    r.getGrade(),
+                                    dateStr
+                            });
+                        }
+                        pastAttemptsCardLayout.show(pastAttemptsCardPanel, VIEW_TABLE);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                    pastAttemptsCardLayout.show(pastAttemptsCardPanel, VIEW_EMPTY);
+                }
             }
         };
         worker.execute();
@@ -298,18 +324,25 @@ public class StudentDashboardPanel extends JPanel {
                 try {
                     List<QuizResult> leaderboard = get();
                     leaderboardModel.setRowCount(0);
-                    int rank = 1;
-                    for (QuizResult r : leaderboard) {
-                        leaderboardModel.addRow(new Object[]{
-                                "#" + (rank++),
-                                r.getUsername() != null ? r.getUsername() : "User " + r.getUserId(),
-                                r.getSubject(),
-                                r.getScore() + " / " + r.getTotalQuestions(),
-                                String.format("%.2f%%", r.getPercentage()),
-                                r.getGrade()
-                        });
+                    if (leaderboard == null || leaderboard.isEmpty()) {
+                        leaderboardCardLayout.show(leaderboardCardPanel, VIEW_EMPTY);
+                    } else {
+                        int rank = 1;
+                        for (QuizResult r : leaderboard) {
+                            leaderboardModel.addRow(new Object[]{
+                                    "#" + (rank++),
+                                    r.getUsername() != null ? r.getUsername() : "User " + r.getUserId(),
+                                    r.getSubject(),
+                                    r.getScore() + " / " + r.getTotalQuestions(),
+                                    String.format("%.2f%%", r.getPercentage()),
+                                    r.getGrade()
+                            });
+                        }
+                        leaderboardCardLayout.show(leaderboardCardPanel, VIEW_TABLE);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                    leaderboardCardLayout.show(leaderboardCardPanel, VIEW_EMPTY);
+                }
             }
         };
         worker.execute();

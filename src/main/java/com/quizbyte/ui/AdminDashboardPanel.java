@@ -17,9 +17,12 @@ import java.util.List;
 /**
  * Administrator dashboard for managing questions, inspecting registered users,
  * and reviewing global quiz score history.
- * Demonstrates custom exception handling and SwingWorker asynchronous processing.
+ * Standardizes button visibility, removes broken glyphs, and provides empty-state placeholders.
  */
 public class AdminDashboardPanel extends JPanel {
+
+    private static final String VIEW_TABLE = "TABLE";
+    private static final String VIEW_EMPTY = "EMPTY";
 
     private final MainFrame mainFrame;
     private final QuestionDAO questionDAO;
@@ -39,10 +42,14 @@ public class AdminDashboardPanel extends JPanel {
     private JButton saveQuestionBtn;
 
     // Tab 2: Users Table Components
+    private CardLayout usersCardLayout;
+    private JPanel usersCardPanel;
     private JTable usersTable;
     private DefaultTableModel usersModel;
 
     // Tab 3: Global Score History Components
+    private CardLayout scoreHistoryCardLayout;
+    private JPanel scoreHistoryCardPanel;
     private JTable scoreHistoryTable;
     private DefaultTableModel scoreHistoryModel;
 
@@ -88,9 +95,9 @@ public class AdminDashboardPanel extends JPanel {
         tabs.setFont(UITheme.FONT_BODY_BOLD);
         tabs.setBackground(Color.WHITE);
 
-        tabs.addTab("  ➕ Add New Question  ", buildAddQuestionTab());
-        tabs.addTab("  👥 Registered Users  ", buildUsersTab());
-        tabs.addTab("  📊 Global Score History  ", buildScoreHistoryTab());
+        tabs.addTab("  Add New Question  ", buildAddQuestionTab());
+        tabs.addTab("  Registered Users  ", buildUsersTab());
+        tabs.addTab("  Global Score History  ", buildScoreHistoryTab());
 
         tabs.addChangeListener(e -> {
             int selectedIndex = tabs.getSelectedIndex();
@@ -191,11 +198,15 @@ public class AdminDashboardPanel extends JPanel {
         title.setFont(UITheme.FONT_SUBTITLE);
         title.setForeground(UITheme.SLATE_DARK);
 
-        JButton refreshUsersBtn = UITheme.createSecondaryButton("↻  Refresh List");
+        JButton refreshUsersBtn = UITheme.createSecondaryButton("Refresh List");
         refreshUsersBtn.addActionListener(e -> loadUsersAsync());
 
         topBar.add(title, BorderLayout.WEST);
         topBar.add(refreshUsersBtn, BorderLayout.EAST);
+
+        usersCardLayout = new CardLayout();
+        usersCardPanel = new JPanel(usersCardLayout);
+        usersCardPanel.setBackground(Color.WHITE);
 
         String[] cols = {"User ID", "Username", "Role"};
         usersModel = new DefaultTableModel(cols, 0) {
@@ -212,8 +223,14 @@ public class AdminDashboardPanel extends JPanel {
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getViewport().setBackground(Color.WHITE);
 
+        JPanel emptyPanel = UITheme.createEmptyPlaceholder("No registered users found in database.");
+
+        usersCardPanel.add(scroll, VIEW_TABLE);
+        usersCardPanel.add(emptyPanel, VIEW_EMPTY);
+        usersCardLayout.show(usersCardPanel, VIEW_EMPTY);
+
         panel.add(topBar, BorderLayout.NORTH);
-        panel.add(scroll, BorderLayout.CENTER);
+        panel.add(usersCardPanel, BorderLayout.CENTER);
         return panel;
     }
 
@@ -228,11 +245,15 @@ public class AdminDashboardPanel extends JPanel {
         title.setFont(UITheme.FONT_SUBTITLE);
         title.setForeground(UITheme.SLATE_DARK);
 
-        JButton refreshScoresBtn = UITheme.createSecondaryButton("↻  Refresh Records");
+        JButton refreshScoresBtn = UITheme.createSecondaryButton("Refresh Records");
         refreshScoresBtn.addActionListener(e -> loadScoreHistoryAsync());
 
         topBar.add(title, BorderLayout.WEST);
         topBar.add(refreshScoresBtn, BorderLayout.EAST);
+
+        scoreHistoryCardLayout = new CardLayout();
+        scoreHistoryCardPanel = new JPanel(scoreHistoryCardLayout);
+        scoreHistoryCardPanel.setBackground(Color.WHITE);
 
         String[] cols = {"Attempt ID", "Student Name", "Subject", "Score", "Percentage", "Grade", "Attempt Date"};
         scoreHistoryModel = new DefaultTableModel(cols, 0) {
@@ -249,8 +270,14 @@ public class AdminDashboardPanel extends JPanel {
         scroll.setBorder(BorderFactory.createEmptyBorder());
         scroll.getViewport().setBackground(Color.WHITE);
 
+        JPanel emptyPanel = UITheme.createEmptyPlaceholder("No quiz attempt records found in database.");
+
+        scoreHistoryCardPanel.add(scroll, VIEW_TABLE);
+        scoreHistoryCardPanel.add(emptyPanel, VIEW_EMPTY);
+        scoreHistoryCardLayout.show(scoreHistoryCardPanel, VIEW_EMPTY);
+
         panel.add(topBar, BorderLayout.NORTH);
-        panel.add(scroll, BorderLayout.CENTER);
+        panel.add(scoreHistoryCardPanel, BorderLayout.CENTER);
         return panel;
     }
 
@@ -335,14 +362,21 @@ public class AdminDashboardPanel extends JPanel {
                 try {
                     List<User> users = get();
                     usersModel.setRowCount(0);
-                    for (User u : users) {
-                        usersModel.addRow(new Object[]{
-                                "#" + u.getUserId(),
-                                u.getUsername(),
-                                u.getRole()
-                        });
+                    if (users == null || users.isEmpty()) {
+                        usersCardLayout.show(usersCardPanel, VIEW_EMPTY);
+                    } else {
+                        for (User u : users) {
+                            usersModel.addRow(new Object[]{
+                                    "#" + u.getUserId(),
+                                    u.getUsername(),
+                                    u.getRole()
+                            });
+                        }
+                        usersCardLayout.show(usersCardPanel, VIEW_TABLE);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                    usersCardLayout.show(usersCardPanel, VIEW_EMPTY);
+                }
             }
         };
         worker.execute();
@@ -360,21 +394,28 @@ public class AdminDashboardPanel extends JPanel {
                 try {
                     List<QuizResult> list = get();
                     scoreHistoryModel.setRowCount(0);
-                    for (QuizResult r : list) {
-                        String dateStr = (r.getAttemptDate() != null)
-                                ? r.getAttemptDate().toString().substring(0, 19)
-                                : "N/A";
-                        scoreHistoryModel.addRow(new Object[]{
-                                "#" + r.getResultId(),
-                                r.getUsername() != null ? r.getUsername() : "User #" + r.getUserId(),
-                                r.getSubject(),
-                                r.getScore() + " / " + r.getTotalQuestions(),
-                                String.format("%.2f%%", r.getPercentage()),
-                                r.getGrade(),
-                                dateStr
-                        });
+                    if (list == null || list.isEmpty()) {
+                        scoreHistoryCardLayout.show(scoreHistoryCardPanel, VIEW_EMPTY);
+                    } else {
+                        for (QuizResult r : list) {
+                            String dateStr = (r.getAttemptDate() != null)
+                                    ? r.getAttemptDate().toString().substring(0, 19)
+                                    : "N/A";
+                            scoreHistoryModel.addRow(new Object[]{
+                                    "#" + r.getResultId(),
+                                    r.getUsername() != null ? r.getUsername() : "User #" + r.getUserId(),
+                                    r.getSubject(),
+                                    r.getScore() + " / " + r.getTotalQuestions(),
+                                    String.format("%.2f%%", r.getPercentage()),
+                                    r.getGrade(),
+                                    dateStr
+                            });
+                        }
+                        scoreHistoryCardLayout.show(scoreHistoryCardPanel, VIEW_TABLE);
                     }
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                    scoreHistoryCardLayout.show(scoreHistoryCardPanel, VIEW_EMPTY);
+                }
             }
         };
         worker.execute();

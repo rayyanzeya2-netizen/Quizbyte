@@ -21,7 +21,7 @@ import java.util.Map;
  * Interactive Quiz runner panel.
  * Demonstrates Multithreading (dedicated QuizTimerService worker thread),
  * Collections Framework (Map<Integer, Character> student answer mapping, List<Question>),
- * and Concurrency synchronization (ThreadSafeLeaderboardCache atomic counter).
+ * and clean standard text labels with zero unsupported font glyphs.
  */
 public class QuizPanel extends JPanel {
 
@@ -88,7 +88,7 @@ public class QuizPanel extends JPanel {
         questionCounterLabel.setFont(UITheme.FONT_SUBTITLE);
         questionCounterLabel.setForeground(UITheme.TEXT_MUTED);
 
-        timerBadgeLabel = new JLabel("⏱ 30s", SwingConstants.RIGHT);
+        timerBadgeLabel = new JLabel("Time: 30s", SwingConstants.RIGHT);
         timerBadgeLabel.setFont(UITheme.FONT_TITLE);
         timerBadgeLabel.setForeground(UITheme.PRIMARY);
 
@@ -169,7 +169,7 @@ public class QuizPanel extends JPanel {
         quitButton = UITheme.createDangerButton("Cancel / Quit Quiz");
         quitButton.addActionListener(e -> confirmQuit());
 
-        nextButton = UITheme.createPrimaryButton("Next Question ➔");
+        nextButton = UITheme.createPrimaryButton("Next Question");
         nextButton.addActionListener(e -> handleNextQuestion(false));
 
         panel.add(quitButton, BorderLayout.WEST);
@@ -217,24 +217,20 @@ public class QuizPanel extends JPanel {
         optionsGroup.clearSelection();
 
         if (currentIndex == questions.size() - 1) {
-            nextButton.setText("Submit Quiz ✔");
+            nextButton.setText("Submit Quiz");
         } else {
-            nextButton.setText("Next Question ➔");
+            nextButton.setText("Next Question");
         }
 
         // Start dedicated worker thread timer
         startWorkerTimer();
     }
 
-    /**
-     * Multithreading Rubric Implementation:
-     * Starts dedicated background timer thread and receives ticks safely on EDT.
-     */
     private void startWorkerTimer() {
         timerService.startTimer(SECONDS_PER_QUESTION, new QuizTimerService.TimerCallback() {
             @Override
             public void onTick(int secondsRemaining) {
-                timerBadgeLabel.setText("⏱ " + secondsRemaining + "s");
+                timerBadgeLabel.setText("Time: " + secondsRemaining + "s");
                 if (secondsRemaining > 10) {
                     timerBadgeLabel.setForeground(UITheme.PRIMARY);
                 } else if (secondsRemaining > 5) {
@@ -272,8 +268,6 @@ public class QuizPanel extends JPanel {
         }
 
         Question currentQuestion = questions.get(currentIndex);
-
-        // Collections Framework: Map recording answer for question ID
         studentAnswers.put(currentQuestion.getQuestionId(), selectedOption);
 
         if (selectedOption != ' ' && selectedOption == currentQuestion.getCorrectOption()) {

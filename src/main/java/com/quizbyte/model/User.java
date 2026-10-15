@@ -31,9 +31,9 @@ public class User extends Person {
     @Override
     public String getRoleBadge() {
         if (isAdmin()) {
-            return "[🛡️ ADMINISTRATOR]";
+            return "[ADMINISTRATOR]";
         } else {
-            return "[🎓 STUDENT]";
+            return "[STUDENT]";
         }
     }
 

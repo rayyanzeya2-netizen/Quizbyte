@@ -10,6 +10,7 @@ import java.awt.*;
 /**
  * Result display panel presenting the scorecard, grade badge,
  * score percentage breakdown, and navigation options.
+ * Utilizes high-contrast buttons and standard typography without broken glyphs.
  */
 public class ResultSummaryPanel extends JPanel {
 
@@ -80,14 +81,14 @@ public class ResultSummaryPanel extends JPanel {
         buttonsPanel.setOpaque(false);
         buttonsPanel.setMaximumSize(new Dimension(440, 50));
 
-        JButton retakeBtn = UITheme.createSecondaryButton("↻  Retake Quiz");
+        JButton retakeBtn = UITheme.createSecondaryButton("Retake Quiz");
         retakeBtn.addActionListener(e -> {
             if (currentSubject != null) {
                 mainFrame.startQuiz(currentSubject);
             }
         });
 
-        JButton dashboardBtn = UITheme.createPrimaryButton("Dashboard ➔");
+        JButton dashboardBtn = UITheme.createPrimaryButton("Return to Dashboard");
         dashboardBtn.addActionListener(e -> mainFrame.showStudentDashboard());
 
         buttonsPanel.add(retakeBtn);
@@ -140,7 +141,6 @@ public class ResultSummaryPanel extends JPanel {
         String grade = result.getGrade();
         gradeBadgeLabel.setText(grade);
 
-        // Dynamic badge color
         if (grade.startsWith("A")) {
             gradeBadgeLabel.setBackground(UITheme.SUCCESS);
         } else if (grade.startsWith("B")) {
@@ -155,9 +155,9 @@ public class ResultSummaryPanel extends JPanel {
     }
 
     private String getEvaluationText(double percentage) {
-        if (percentage >= 90.0) return "🌟 Outstanding! Excellent mastery of " + currentSubject + ".";
-        if (percentage >= 75.0) return "👍 Great Job! Strong understanding demonstrated.";
-        if (percentage >= 50.0) return "📚 Passed! A little more practice will make it perfect.";
-        return "⚠️ Keep Practicing! Review the core concepts and try again.";
+        if (percentage >= 90.0) return "Outstanding! Excellent mastery of " + currentSubject + ".";
+        if (percentage >= 75.0) return "Great Job! Strong understanding demonstrated.";
+        if (percentage >= 50.0) return "Passed! A little more practice will make it perfect.";
+        return "Keep Practicing! Review the core concepts and try again.";
     }
 }
