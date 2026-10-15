@@ -20,7 +20,7 @@ public class DatabaseConfig {
     public static final String DEFAULT_URL = 
             "jdbc:mysql://localhost:3306/quiz_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
     public static final String DEFAULT_USER = "root";
-    public static final String DEFAULT_PASSWORD = "root";
+    public static final String DEFAULT_PASSWORD = "1234";
 
     private static final String URL;
     private static final String USER;

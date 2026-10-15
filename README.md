@@ -1,36 +1,46 @@
-# Quizbyte - Java Online Quiz Platform
+# Quizbyte - Interactive Desktop Quiz Platform (Java Swing GUI)
 
-Quizbyte is an enterprise-grade, console-based online quiz platform built using **Java 17**, **Maven**, and **MySQL** via standard **JDBC**. It follows the industry-standard **DAO (Data Access Object) Pattern**, strict **Object-Oriented Programming (OOP)** principles, and clean separation of concerns.
+Quizbyte is an enterprise-grade, desktop-based online quiz platform built using **Java 17**, **Java Swing (`javax.swing.*`)**, **Maven**, and **MySQL** via standard **JDBC**. It follows the industry-standard **DAO (Data Access Object) Pattern**, strict **Object-Oriented Programming (OOP)** principles, and clean separation of concerns.
 
 ---
 
 ## 🌟 Key Features
 
-- **Role-Based Access Control (RBAC):**
-  - **Student Portal:**
-    - Browse available quiz subjects (e.g., Java, Object-Oriented Programming, Database Management Systems).
-    - Take interactive, randomized quizzes with immediate feedback and scoring.
-    - Automated grade calculation (`A+`, `A`, `B`, `C`, `D`, `F`) and performance evaluation remarks.
-    - View personal historical quiz attempts with timestamps.
-    - View the global real-time leaderboard.
-  - **Administrator Portal:**
-    - Add new multiple-choice questions dynamically across any subject.
-    - View and inspect all registered system users and their roles.
-    - Audit global score history and student performance records.
+- **Modern Graphical User Interface (Java Swing):**
+  - Native OS Look & Feel integration (`UIManager.getSystemLookAndFeelClassName()`).
+  - Cohesive design system (`UITheme`) with slate (`#1E293B`), royal blue (`#2563EB`), and emerald green (`#10B981`) color palettes.
+  - Seamless, single-window transitions via `CardLayout` without cluttering popup windows.
+  - Multi-threaded responsiveness using `SwingWorker` for non-blocking asynchronous database operations.
+- **Role-Based Portals:**
+  - **Authentication Screen (`LoginPanel`):**
+    - Sign In with username, password, and role picker (Student / Admin).
+    - Integrated registration toggle to create new student accounts with instant validation.
+  - **Student Portal (`StudentDashboardPanel`):**
+    - Subject selection dropdown (Java, OOP, DBMS, etc.) with real-time question count badges.
+    - One-click quiz launcher.
+    - Historical quiz attempts table (`JTable`) displaying scores, percentages, grades, and timestamps.
+    - Real-time global leaderboard table (`JTable`) ranking top scores across all students.
+  - **Interactive Quiz Runner (`QuizPanel`):**
+    - Subject header with visual linear progress bar (`JProgressBar`).
+    - Live countdown timer (30s per question) with dynamic color warning (Green &rarr; Amber &rarr; Red).
+    - Word-wrapped question prompts and stylized option radio buttons [A], [B], [C], [D].
+    - Automatic progression on timer expiration or user submission.
+  - **Scorecard & Results (`ResultSummaryPanel`):**
+    - Dynamic performance badge displaying computed letter grade (`A+`, `A`, `B`, `C`, `D`, `F`).
+    - Stat cards for score breakdown, accuracy percentage, and contextual feedback messages.
+    - Options to retake the quiz immediately or return to the student dashboard.
+  - **Administrator Portal (`AdminDashboardPanel`):**
+    - Tab 1: Interactive form to create and add new multiple-choice questions into the question bank.
+    - Tab 2: System users registry table (`JTable`) listing all registered accounts and roles.
+    - Tab 3: Global score audit table (`JTable`) tracking all quiz attempts across the platform.
 - **Robust Security & Data Integrity:**
-  - Standard JDBC `PreparedStatement` utilized in every query to eliminate SQL injection vulnerabilities.
-  - Automatic resource management using Java `try-with-resources`.
-  - Referential integrity with foreign keys and cascade deletion.
-- **Resilient CLI Experience:**
-  - Rich ASCII art banners and clean table formatting.
-  - Crash-proof input parsing using dedicated scanner input validators.
-  - Automatic startup database connectivity diagnostics.
+  - Parameterized queries (`PreparedStatement`) in all DAO layers to prevent SQL injection.
+  - Automatic resource closure with `try-with-resources`.
+  - Referential integrity with foreign keys and cascade deletion on `quiz_results`.
 
 ---
 
 ## 🏗️ Architecture & Directory Structure
-
-Quizbyte adheres to a clean layered architecture:
 
 ```
 Quizbyte/
@@ -44,7 +54,7 @@ Quizbyte/
         └── java/
             └── com/
                 └── quizbyte/
-                    ├── Main.java         # CLI presentation & menu routing
+                    ├── Main.java         # Application entry point launching Swing GUI
                     ├── config/
                     │   └── DatabaseConfig.java # Centralized JDBC connection manager
                     ├── model/            # Plain Old Java Objects (POJO) / Entities
@@ -55,9 +65,17 @@ Quizbyte/
                     │   ├── UserDAO.java
                     │   ├── QuestionDAO.java
                     │   └── ResultDAO.java
-                    └── service/          # Business logic layer
-                        ├── AuthService.java
-                        └── QuizService.java
+                    ├── service/          # Business logic layer
+                    │   ├── AuthService.java
+                    │   └── QuizService.java
+                    └── ui/               # Modern Swing Desktop GUI Layer
+                        ├── UITheme.java              # Styling constants, colors & component factories
+                        ├── MainFrame.java            # Master JFrame with CardLayout view switcher
+                        ├── LoginPanel.java           # Authentication & student registration
+                        ├── StudentDashboardPanel.java# Subject pick, past attempts & leaderboard
+                        ├── QuizPanel.java            # Live question runner, radio inputs & timer
+                        ├── ResultSummaryPanel.java   # Scorecard, grade badges & retake controls
+                        └── AdminDashboardPanel.java  # Question editor, user audit & global history
 ```
 
 ---
@@ -65,8 +83,9 @@ Quizbyte/
 ## 🛠️ Prerequisites & Tech Stack
 
 - **Java Development Kit (JDK):** Version 17 or higher
-- **Apache Maven:** Version 3.8+
-- **MySQL Server:** Version 8.0+
+- **UI Framework:** Java Swing (`javax.swing.*`) & AWT (`java.awt.*`)
+- **Build Tool:** Apache Maven 3.8+
+- **Database:** MySQL Server 8.0+
 - **JDBC Driver:** `com.mysql:mysql-connector-j:8.3.0`
 
 ---
@@ -74,17 +93,12 @@ Quizbyte/
 ## 🚀 Setup & Execution Guide
 
 ### Step 1: Initialize MySQL Database
-Make sure your MySQL service is active (e.g. `MySQL80`), then open MySQL CLI or MySQL Workbench and run `database/schema.sql`:
+Ensure your MySQL service is active (e.g. `MySQL80`), then run the database setup script:
 
 ```bash
 # Using MySQL Command Line Client:
 mysql -u root -p < database/schema.sql
 ```
-
-This will:
-1. Create the `quiz_db` database.
-2. Create the `users`, `questions`, and `quiz_results` tables with constraints.
-3. Seed the initial admin account, student account, and question bank.
 
 **Default Seed Credentials:**
 | Role | Username | Password |
@@ -96,43 +110,33 @@ This will:
 
 ### Step 2: Configure Database Credentials
 
-The default credentials in `src/main/java/com/quizbyte/config/DatabaseConfig.java` are:
+Default credentials in `DatabaseConfig.java`:
 - **URL:** `jdbc:mysql://localhost:3306/quiz_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC`
 - **Username:** `root`
 - **Password:** `root`
 
-If your local MySQL root password is different, either:
-1. Edit `DEFAULT_PASSWORD` in `DatabaseConfig.java`, **OR**
-2. Set runtime environment variables without touching the code:
-   ```powershell
-   $env:DB_USER = "root"
-   $env:DB_PASSWORD = "your_mysql_password"
-   ```
-
----
-
-### Step 3: Build & Compile with Maven
-
-Verify and compile the project:
-
-```bash
-mvn clean test-compile
+Override credentials anytime via environment variables:
+```powershell
+$env:DB_USER = "root"
+$env:DB_PASSWORD = "your_mysql_password"
 ```
 
 ---
 
-### Step 4: Run the Application
+### Step 3: Build & Compile
 
-Launch Quizbyte using the Maven Exec plugin:
+```bash
+mvn clean compile
+```
+
+---
+
+### Step 4: Run Desktop GUI Application
+
+Launch the desktop GUI window directly using Maven:
 
 ```bash
 mvn exec:java
-```
-
-Alternatively, compile and package into a JAR:
-```bash
-mvn clean package
-java -cp "target/quizbyte-1.0-SNAPSHOT.jar;target/dependency/*" com.quizbyte.Main
 ```
 
 ---
@@ -140,13 +144,12 @@ java -cp "target/quizbyte-1.0-SNAPSHOT.jar;target/dependency/*" com.quizbyte.Mai
 ## 🎓 Academic Evaluation Highlights
 
 1. **Object-Oriented Programming (OOP) Principles:**
-   - **Encapsulation:** Model fields are private with accessors/mutators (`User`, `Question`, `QuizResult`).
-   - **Separation of Concerns:** Business logic (`service`), persistence logic (`dao`), models (`model`), and UI runner (`Main`) are strictly decoupled.
-   - **Polymorphism & Dynamic Dispatch:** Used across standard interfaces, switch expressions, and Java Collections framework.
-2. **Database Best Practices:**
-   - Explicit database transaction handling and automatic resource closure (`try-with-resources`).
-   - Prevention of SQL Injection attacks via parameterized queries (`PreparedStatement`).
-   - Relational integrity with Foreign Keys and `ON DELETE CASCADE`.
-3. **Defensive Programming:**
-   - Full input sanitization preventing application crashes on improper numeric or character CLI input.
-   - Graceful offline detection if MySQL database is not reachable.
+   - **Encapsulation:** Pure POJO models with private fields and public accessors/mutators.
+   - **Layered Architecture:** Strict separation between Presentation (`ui`), Business Logic (`service`), Data Access (`dao`), and Domain Models (`model`).
+   - **Event-Driven Programming:** Robust listener pattern implementations (`ActionListener`, `DocumentListener`, `MouseAdapter`) driving Swing UI interactions.
+2. **Concurrency & Thread Safety:**
+   - Initialization and rendering dispatched safely on the **Event Dispatch Thread (EDT)** via `SwingUtilities.invokeLater`.
+   - Long-running database operations offloaded to background threads using `SwingWorker` to ensure a 60 FPS, non-blocking UI.
+3. **Database Best Practices:**
+   - Parameterized SQL execution via `PreparedStatement` ensuring absolute protection against SQL Injection.
+   - Connection lifecycle management with automatic resource cleanup (`try-with-resources`).
