@@ -112,7 +112,7 @@ public class MainFrame extends JFrame {
         setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         SwingWorker<List<Question>, Void> worker = new SwingWorker<>() {
             @Override
-            protected List<Question> doInBackground() {
+            protected List<Question> doInBackground() throws Exception {
                 return questionDAO.getQuestionsBySubject(subject, 5);
             }
 
@@ -129,10 +129,20 @@ public class MainFrame extends JFrame {
                     }
                     quizPanel.loadQuiz(authService.getCurrentUser(), subject, questions);
                     cardLayout.show(cardsContainer, CARD_QUIZ);
-                } catch (Exception e) {
-                    JOptionPane.showMessageDialog(MainFrame.this,
-                            "Failed to load quiz questions: " + e.getMessage(),
-                            "Database Error", JOptionPane.ERROR_MESSAGE);
+                } catch (java.util.concurrent.ExecutionException e) {
+                    Throwable cause = e.getCause();
+                    if (cause instanceof com.quizbyte.exception.QuestionNotFoundException) {
+                        JOptionPane.showMessageDialog(MainFrame.this,
+                                cause.getMessage(), "Topic Unavailable", JOptionPane.INFORMATION_MESSAGE);
+                    } else if (cause instanceof com.quizbyte.exception.DatabaseOperationException) {
+                        JOptionPane.showMessageDialog(MainFrame.this,
+                                "Database Error: " + cause.getMessage(), "Database Failure", JOptionPane.ERROR_MESSAGE);
+                    } else {
+                        JOptionPane.showMessageDialog(MainFrame.this,
+                                "Failed to load quiz: " + cause.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                 }
             }
         };

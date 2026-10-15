@@ -2,6 +2,7 @@ package com.quizbyte.ui;
 
 import com.quizbyte.dao.QuestionDAO;
 import com.quizbyte.dao.ResultDAO;
+import com.quizbyte.exception.DatabaseOperationException;
 import com.quizbyte.model.QuizResult;
 import com.quizbyte.model.User;
 
@@ -13,8 +14,8 @@ import java.util.List;
 
 /**
  * Dashboard panel for logged-in students.
- * Allows subject selection, quiz initiation, reviewing past performance,
- * and checking the global leaderboard.
+ * Integrates OOP polymorphic role badges, Collections framework tables,
+ * and asynchronous background database workers.
  */
 public class StudentDashboardPanel extends JPanel {
 
@@ -23,6 +24,7 @@ public class StudentDashboardPanel extends JPanel {
     private final ResultDAO resultDAO;
 
     private JLabel welcomeLabel;
+    private JLabel roleBadgeLabel;
     private JComboBox<String> subjectComboBox;
     private JLabel questionCountLabel;
     private JButton startQuizButton;
@@ -50,9 +52,20 @@ public class StudentDashboardPanel extends JPanel {
         JPanel header = new JPanel(new BorderLayout());
         header.setOpaque(false);
 
+        JPanel leftBox = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        leftBox.setOpaque(false);
+
         welcomeLabel = new JLabel("Welcome, Student!");
         welcomeLabel.setFont(UITheme.FONT_TITLE);
         welcomeLabel.setForeground(UITheme.SLATE_DARK);
+
+        // Polymorphic badge representation from Person/User model
+        roleBadgeLabel = new JLabel("[🎓 STUDENT]");
+        roleBadgeLabel.setFont(UITheme.FONT_BODY_BOLD);
+        roleBadgeLabel.setForeground(UITheme.PRIMARY);
+
+        leftBox.add(welcomeLabel);
+        leftBox.add(roleBadgeLabel);
 
         JButton logoutBtn = UITheme.createDangerButton("Log Out");
         logoutBtn.addActionListener(e -> {
@@ -64,7 +77,7 @@ public class StudentDashboardPanel extends JPanel {
             }
         });
 
-        header.add(welcomeLabel, BorderLayout.WEST);
+        header.add(leftBox, BorderLayout.WEST);
         header.add(logoutBtn, BorderLayout.EAST);
         return header;
     }
@@ -73,7 +86,6 @@ public class StudentDashboardPanel extends JPanel {
         JPanel container = new JPanel(new BorderLayout(0, 16));
         container.setOpaque(false);
 
-        // Subject picker & Quiz Launcher Card
         JPanel launcherCard = UITheme.createCardPanel();
         launcherCard.setLayout(new FlowLayout(FlowLayout.LEFT, 16, 12));
 
@@ -108,7 +120,6 @@ public class StudentDashboardPanel extends JPanel {
         launcherCard.add(startQuizButton);
         launcherCard.add(refreshBtn);
 
-        // Tables Tabbed Pane
         JTabbedPane tabbedPane = new JTabbedPane();
         tabbedPane.setFont(UITheme.FONT_BODY_BOLD);
         tabbedPane.setBackground(Color.WHITE);
@@ -170,13 +181,11 @@ public class StudentDashboardPanel extends JPanel {
         return panel;
     }
 
-    /**
-     * Refreshes dashboard data asynchronously.
-     */
     public void refreshData() {
         User user = mainFrame.getAuthService().getCurrentUser();
         if (user != null) {
             welcomeLabel.setText("Welcome back, " + user.getUsername() + "!");
+            roleBadgeLabel.setText(user.getRoleBadge()); // Polymorphic call
         }
 
         loadSubjectsAsync();
@@ -225,7 +234,7 @@ public class StudentDashboardPanel extends JPanel {
 
         SwingWorker<Integer, Void> worker = new SwingWorker<>() {
             @Override
-            protected Integer doInBackground() {
+            protected Integer doInBackground() throws DatabaseOperationException {
                 return questionDAO.getQuestionCountBySubject(selected);
             }
 
@@ -248,7 +257,7 @@ public class StudentDashboardPanel extends JPanel {
 
         SwingWorker<List<QuizResult>, Void> worker = new SwingWorker<>() {
             @Override
-            protected List<QuizResult> doInBackground() {
+            protected List<QuizResult> doInBackground() throws DatabaseOperationException {
                 return resultDAO.getResultsByUserId(userId);
             }
 
@@ -280,7 +289,7 @@ public class StudentDashboardPanel extends JPanel {
     private void loadLeaderboardAsync() {
         SwingWorker<List<QuizResult>, Void> worker = new SwingWorker<>() {
             @Override
-            protected List<QuizResult> doInBackground() {
+            protected List<QuizResult> doInBackground() throws DatabaseOperationException {
                 return resultDAO.getAllLeaderboardResults();
             }
 

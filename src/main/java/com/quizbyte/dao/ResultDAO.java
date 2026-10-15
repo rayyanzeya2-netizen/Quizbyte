@@ -1,7 +1,9 @@
 package com.quizbyte.dao;
 
 import com.quizbyte.config.DatabaseConfig;
+import com.quizbyte.exception.DatabaseOperationException;
 import com.quizbyte.model.QuizResult;
+import com.quizbyte.util.ThreadSafeLeaderboardCache;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -10,21 +12,75 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Data Access Object for QuizResult entity.
- * Handles persisting quiz results, fetching user-specific history,
- * and generating leaderboard standings.
+ * Implements generic BaseDAO<QuizResult> contract and synchronizes with
+ * ThreadSafeLeaderboardCache to eliminate race conditions on score updates.
  */
-public class ResultDAO {
+public class ResultDAO implements BaseDAO<QuizResult> {
+
+    private final ThreadSafeLeaderboardCache cache = ThreadSafeLeaderboardCache.getInstance();
+
+    // =========================================================================
+    // BaseDAO<QuizResult> CONTRACT IMPLEMENTATIONS
+    // =========================================================================
+
+    @Override
+    public boolean save(QuizResult result) throws DatabaseOperationException {
+        return saveResult(result);
+    }
+
+    @Override
+    public Optional<QuizResult> findById(int id) throws DatabaseOperationException {
+        String sql = "SELECT r.result_id, r.user_id, u.username, r.subject, r.score, r.total_questions, " +
+                     "r.percentage, r.attempt_date " +
+                     "FROM quiz_results r " +
+                     "JOIN users u ON r.user_id = u.user_id " +
+                     "WHERE r.result_id = ?";
+
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, id);
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(new QuizResult(
+                            rs.getInt("result_id"),
+                            rs.getInt("user_id"),
+                            rs.getString("username"),
+                            rs.getString("subject"),
+                            rs.getInt("score"),
+                            rs.getInt("total_questions"),
+                            rs.getDouble("percentage"),
+                            rs.getTimestamp("attempt_date")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            throw new DatabaseOperationException("Error fetching result by ID: " + id, e);
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public List<QuizResult> findAll() throws DatabaseOperationException {
+        return getAllResults();
+    }
+
+    // =========================================================================
+    // RESULT SPECIFIC OPERATIONS
+    // =========================================================================
 
     /**
-     * Saves a quiz attempt result to the database.
+     * Saves a quiz attempt and invalidates the thread-safe leaderboard cache.
      *
-     * @param result QuizResult object containing score, percentage, user_id, and subject
+     * @param result QuizResult object to insert
      * @return true if successfully saved, false otherwise
+     * @throws DatabaseOperationException if insert fails
      */
-    public boolean saveResult(QuizResult result) {
+    public boolean saveResult(QuizResult result) throws DatabaseOperationException {
         String sql = "INSERT INTO quiz_results (user_id, subject, score, total_questions, percentage) " +
                      "VALUES (?, ?, ?, ?, ?)";
 
@@ -44,22 +100,20 @@ public class ResultDAO {
                         result.setResultId(generatedKeys.getInt(1));
                     }
                 }
+                // Invalidate thread-safe cache upon score write
+                cache.invalidateCache();
                 return true;
             }
             return false;
         } catch (SQLException e) {
-            System.err.println("[ResultDAO] Error saving quiz result: " + e.getMessage());
-            return false;
+            throw new DatabaseOperationException("Error persisting quiz attempt result", e);
         }
     }
 
     /**
-     * Retrieves all quiz results for a specific user, ordered by attempt date descending.
-     *
-     * @param userId user ID
-     * @return List of QuizResult objects
+     * Retrieves all results for a specific student.
      */
-    public List<QuizResult> getResultsByUserId(int userId) {
+    public List<QuizResult> getResultsByUserId(int userId) throws DatabaseOperationException {
         List<QuizResult> results = new ArrayList<>();
         String sql = "SELECT r.result_id, r.user_id, u.username, r.subject, r.score, r.total_questions, " +
                      "r.percentage, r.attempt_date " +
@@ -87,18 +141,20 @@ public class ResultDAO {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[ResultDAO] Error retrieving user results: " + e.getMessage());
+            throw new DatabaseOperationException("Error fetching past quiz history for user ID: " + userId, e);
         }
         return results;
     }
 
     /**
-     * Retrieves the top leaderboard results across all users.
-     * Ranked by percentage descending, score descending, and recent attempt date.
-     *
-     * @return List of QuizResult objects representing the leaderboard
+     * Retrieves top leaderboard records, using the synchronized thread-safe cache
+     * when valid to optimize database throughput and demonstrate thread safety.
      */
-    public List<QuizResult> getAllLeaderboardResults() {
+    public List<QuizResult> getAllLeaderboardResults() throws DatabaseOperationException {
+        if (cache.isCacheValid()) {
+            return cache.getCachedLeaderboard();
+        }
+
         List<QuizResult> leaderboard = new ArrayList<>();
         String sql = "SELECT r.result_id, r.user_id, u.username, r.subject, r.score, r.total_questions, " +
                      "r.percentage, r.attempt_date " +
@@ -124,17 +180,18 @@ public class ResultDAO {
                 ));
             }
         } catch (SQLException e) {
-            System.err.println("[ResultDAO] Error retrieving leaderboard: " + e.getMessage());
+            throw new DatabaseOperationException("Error retrieving global leaderboard results", e);
         }
+
+        // Update the synchronized cache
+        cache.updateCache(leaderboard);
         return leaderboard;
     }
 
     /**
-     * Retrieves all quiz results across all users (for Admin global audit).
-     *
-     * @return List of QuizResult objects
+     * Retrieves all results across the system for admin audit.
      */
-    public List<QuizResult> getAllResults() {
+    public List<QuizResult> getAllResults() throws DatabaseOperationException {
         List<QuizResult> list = new ArrayList<>();
         String sql = "SELECT r.result_id, r.user_id, u.username, r.subject, r.score, r.total_questions, " +
                      "r.percentage, r.attempt_date " +
@@ -159,7 +216,7 @@ public class ResultDAO {
                 ));
             }
         } catch (SQLException e) {
-            System.err.println("[ResultDAO] Error retrieving all results: " + e.getMessage());
+            throw new DatabaseOperationException("Error retrieving global score audit records", e);
         }
         return list;
     }

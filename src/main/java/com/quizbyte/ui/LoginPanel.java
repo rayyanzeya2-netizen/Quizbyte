@@ -1,15 +1,18 @@
 package com.quizbyte.ui;
 
+import com.quizbyte.exception.AuthenticationException;
+import com.quizbyte.exception.DatabaseOperationException;
 import com.quizbyte.model.User;
 import com.quizbyte.service.AuthService;
 
 import javax.swing.*;
-import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Modern login and student registration panel.
- * Features a clean card aesthetic with seamless toggling between Login and Registration.
+ * Demonstrates robust custom exception handling (AuthenticationException, DatabaseOperationException)
+ * and responsive multithreaded background processing with SwingWorker.
  */
 public class LoginPanel extends JPanel {
 
@@ -39,7 +42,6 @@ public class LoginPanel extends JPanel {
         setLayout(new GridBagLayout());
         setBackground(UITheme.BG_LIGHT);
 
-        // Main Auth Card Container
         this.authCardLayout = new CardLayout();
         this.authCardContainer = new JPanel(authCardLayout);
         this.authCardContainer.setOpaque(false);
@@ -50,7 +52,6 @@ public class LoginPanel extends JPanel {
         authCardContainer.add(loginCard, "LOGIN_MODE");
         authCardContainer.add(registerCard, "REGISTER_MODE");
 
-        // Wrapper Panel with Branding Header
         JPanel wrapper = new JPanel(new BorderLayout(0, 16));
         wrapper.setOpaque(false);
         wrapper.add(buildBrandingHeader(), BorderLayout.NORTH);
@@ -91,7 +92,6 @@ public class LoginPanel extends JPanel {
         desc.setForeground(UITheme.TEXT_MUTED);
         desc.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // Fields
         loginUsernameField = UITheme.createTextField(20);
         loginPasswordField = UITheme.createPasswordField(20);
         loginRolePicker = new JComboBox<>(new String[]{"STUDENT", "ADMIN"});
@@ -110,7 +110,6 @@ public class LoginPanel extends JPanel {
         switchToRegisterBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
         switchToRegisterBtn.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        // Assemble
         card.add(Box.createVerticalStrut(10));
         card.add(title);
         card.add(Box.createVerticalStrut(4));
@@ -128,7 +127,6 @@ public class LoginPanel extends JPanel {
         card.add(Box.createVerticalStrut(12));
         card.add(switchToRegisterBtn);
 
-        // Action Listeners
         loginButton.addActionListener(e -> performLogin());
         loginPasswordField.addActionListener(e -> performLogin());
         switchToRegisterBtn.addActionListener(e -> authCardLayout.show(authCardContainer, "REGISTER_MODE"));
@@ -184,7 +182,6 @@ public class LoginPanel extends JPanel {
         card.add(Box.createVerticalStrut(12));
         card.add(switchToLoginBtn);
 
-        // Action Listeners
         registerButton.addActionListener(e -> performRegistration());
         regConfirmPasswordField.addActionListener(e -> performRegistration());
         switchToLoginBtn.addActionListener(e -> authCardLayout.show(authCardContainer, "LOGIN_MODE"));
@@ -227,9 +224,10 @@ public class LoginPanel extends JPanel {
         loginButton.setEnabled(false);
         loginButton.setText("Authenticating...");
 
-        SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
+        // Multithreaded authentication via SwingWorker
+        SwingWorker<User, Void> worker = new SwingWorker<>() {
             @Override
-            protected Boolean doInBackground() {
+            protected User doInBackground() throws AuthenticationException, DatabaseOperationException {
                 return authService.login(username, password);
             }
 
@@ -238,14 +236,12 @@ public class LoginPanel extends JPanel {
                 loginButton.setEnabled(true);
                 loginButton.setText("Sign In");
                 try {
-                    boolean success = get();
-                    if (success) {
-                        User user = authService.getCurrentUser();
-                        // Verify role matches selected role
+                    User user = get();
+                    if (user != null) {
                         if (!user.getRole().equalsIgnoreCase(expectedRole)) {
                             JOptionPane.showMessageDialog(LoginPanel.this,
-                                    "Account role mismatch: Your account is registered as " + user.getRole() +
-                                    ", not " + expectedRole + ".",
+                                    "Account role mismatch: Your account role is " + user.getRole() +
+                                    ", but you selected " + expectedRole + ".",
                                     "Role Mismatch", JOptionPane.WARNING_MESSAGE);
                             authService.logout();
                             return;
@@ -256,15 +252,21 @@ public class LoginPanel extends JPanel {
                         } else {
                             mainFrame.showStudentDashboard();
                         }
+                    }
+                } catch (ExecutionException ex) {
+                    Throwable cause = ex.getCause();
+                    if (cause instanceof AuthenticationException) {
+                        JOptionPane.showMessageDialog(LoginPanel.this,
+                                cause.getMessage(), "Authentication Failed", JOptionPane.WARNING_MESSAGE);
+                    } else if (cause instanceof DatabaseOperationException) {
+                        JOptionPane.showMessageDialog(LoginPanel.this,
+                                "Database Error: " + cause.getMessage(), "Database Error", JOptionPane.ERROR_MESSAGE);
                     } else {
                         JOptionPane.showMessageDialog(LoginPanel.this,
-                                "Invalid username or password. Please check your credentials.",
-                                "Login Failed", JOptionPane.ERROR_MESSAGE);
+                                "Unexpected error: " + cause.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                     }
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(LoginPanel.this,
-                            "Database error during authentication: " + ex.getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
                 }
             }
         };
@@ -299,7 +301,7 @@ public class LoginPanel extends JPanel {
 
         SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
             @Override
-            protected Boolean doInBackground() {
+            protected Boolean doInBackground() throws AuthenticationException, DatabaseOperationException {
                 return authService.register(username, password, "STUDENT");
             }
 
@@ -312,20 +314,26 @@ public class LoginPanel extends JPanel {
                     if (created) {
                         JOptionPane.showMessageDialog(LoginPanel.this,
                                 "Account created successfully! You can now log in with your credentials.",
-                                "Success", JOptionPane.INFORMATION_MESSAGE);
+                                "Registration Success", JOptionPane.INFORMATION_MESSAGE);
                         loginUsernameField.setText(username);
                         loginPasswordField.setText("");
                         loginRolePicker.setSelectedItem("STUDENT");
                         authCardLayout.show(authCardContainer, "LOGIN_MODE");
+                    }
+                } catch (ExecutionException ex) {
+                    Throwable cause = ex.getCause();
+                    if (cause instanceof AuthenticationException) {
+                        JOptionPane.showMessageDialog(LoginPanel.this,
+                                cause.getMessage(), "Validation Error", JOptionPane.WARNING_MESSAGE);
+                    } else if (cause instanceof DatabaseOperationException) {
+                        JOptionPane.showMessageDialog(LoginPanel.this,
+                                "Database Error: " + cause.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                     } else {
                         JOptionPane.showMessageDialog(LoginPanel.this,
-                                "Registration failed: Username '" + username + "' is already taken.",
-                                "Registration Error", JOptionPane.WARNING_MESSAGE);
+                                "Registration Error: " + cause.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                     }
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(LoginPanel.this,
-                            "Database error during registration: " + ex.getMessage(),
-                            "Error", JOptionPane.ERROR_MESSAGE);
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
                 }
             }
         };

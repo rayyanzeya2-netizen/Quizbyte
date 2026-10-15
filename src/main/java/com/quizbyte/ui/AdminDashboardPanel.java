@@ -3,6 +3,7 @@ package com.quizbyte.ui;
 import com.quizbyte.dao.QuestionDAO;
 import com.quizbyte.dao.ResultDAO;
 import com.quizbyte.dao.UserDAO;
+import com.quizbyte.exception.DatabaseOperationException;
 import com.quizbyte.model.Question;
 import com.quizbyte.model.QuizResult;
 import com.quizbyte.model.User;
@@ -16,6 +17,7 @@ import java.util.List;
 /**
  * Administrator dashboard for managing questions, inspecting registered users,
  * and reviewing global quiz score history.
+ * Demonstrates custom exception handling and SwingWorker asynchronous processing.
  */
 public class AdminDashboardPanel extends JPanel {
 
@@ -136,7 +138,6 @@ public class AdminDashboardPanel extends JPanel {
         JButton clearBtn = UITheme.createSecondaryButton("Clear Form");
         clearBtn.addActionListener(e -> clearQuestionForm());
 
-        // Layout rows
         int row = 0;
         addFormRow(formCard, gbc, row++, "Subject (e.g. Java, OOP, DBMS):", subjectField);
         addFormRow(formCard, gbc, row++, "Question Text:", questionScroll);
@@ -146,7 +147,6 @@ public class AdminDashboardPanel extends JPanel {
         addFormRow(formCard, gbc, row++, "Option [D]:", optionDField);
         addFormRow(formCard, gbc, row++, "Correct Answer:", correctOptionComboBox);
 
-        // Buttons row
         JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
         buttonsPanel.setOpaque(false);
         buttonsPanel.add(saveQuestionBtn);
@@ -279,7 +279,7 @@ public class AdminDashboardPanel extends JPanel {
 
         SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
             @Override
-            protected Boolean doInBackground() {
+            protected Boolean doInBackground() throws DatabaseOperationException {
                 return questionDAO.addQuestion(newQuestion);
             }
 
@@ -294,14 +294,10 @@ public class AdminDashboardPanel extends JPanel {
                                 "Question saved successfully! (Question ID: #" + newQuestion.getQuestionId() + ")",
                                 "Success", JOptionPane.INFORMATION_MESSAGE);
                         clearQuestionForm();
-                    } else {
-                        JOptionPane.showMessageDialog(AdminDashboardPanel.this,
-                                "Failed to save question to the database.",
-                                "Database Error", JOptionPane.ERROR_MESSAGE);
                     }
                 } catch (Exception ex) {
                     JOptionPane.showMessageDialog(AdminDashboardPanel.this,
-                            "Error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+                            "Database Error: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
         };
@@ -330,7 +326,7 @@ public class AdminDashboardPanel extends JPanel {
     private void loadUsersAsync() {
         SwingWorker<List<User>, Void> worker = new SwingWorker<>() {
             @Override
-            protected List<User> doInBackground() {
+            protected List<User> doInBackground() throws DatabaseOperationException {
                 return userDAO.getAllUsers();
             }
 
@@ -355,7 +351,7 @@ public class AdminDashboardPanel extends JPanel {
     private void loadScoreHistoryAsync() {
         SwingWorker<List<QuizResult>, Void> worker = new SwingWorker<>() {
             @Override
-            protected List<QuizResult> doInBackground() {
+            protected List<QuizResult> doInBackground() throws DatabaseOperationException {
                 return resultDAO.getAllResults();
             }
 

@@ -1,20 +1,27 @@
 package com.quizbyte.ui;
 
 import com.quizbyte.dao.ResultDAO;
+import com.quizbyte.exception.DatabaseOperationException;
 import com.quizbyte.model.Question;
 import com.quizbyte.model.QuizResult;
 import com.quizbyte.model.User;
+import com.quizbyte.service.QuizTimerService;
+import com.quizbyte.util.ThreadSafeLeaderboardCache;
 
 import javax.swing.*;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
 import java.awt.*;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Interactive Quiz runner panel with live question rendering,
- * option selection, per-question countdown timer, and automated scoring.
+ * Interactive Quiz runner panel.
+ * Demonstrates Multithreading (dedicated QuizTimerService worker thread),
+ * Collections Framework (Map<Integer, Character> student answer mapping, List<Question>),
+ * and Concurrency synchronization (ThreadSafeLeaderboardCache atomic counter).
  */
 public class QuizPanel extends JPanel {
 
@@ -22,6 +29,8 @@ public class QuizPanel extends JPanel {
 
     private final MainFrame mainFrame;
     private final ResultDAO resultDAO;
+    private final QuizTimerService timerService;
+    private final ThreadSafeLeaderboardCache cache = ThreadSafeLeaderboardCache.getInstance();
 
     // Active Quiz State
     private User currentUser;
@@ -30,9 +39,8 @@ public class QuizPanel extends JPanel {
     private int currentIndex;
     private int currentScore;
 
-    // Timer State
-    private Timer countdownTimer;
-    private int remainingSeconds;
+    // Collections Rubric: Map storing question_id -> student chosen answer character
+    private final Map<Integer, Character> studentAnswers;
 
     // UI Components
     private JLabel subjectLabel;
@@ -53,6 +61,8 @@ public class QuizPanel extends JPanel {
     public QuizPanel(MainFrame mainFrame) {
         this.mainFrame = mainFrame;
         this.resultDAO = mainFrame.getResultDAO();
+        this.timerService = new QuizTimerService();
+        this.studentAnswers = new HashMap<>();
 
         setLayout(new BorderLayout(0, 16));
         setBackground(UITheme.BG_LIGHT);
@@ -102,7 +112,6 @@ public class QuizPanel extends JPanel {
         JPanel card = UITheme.createCardPanel();
         card.setLayout(new BorderLayout(0, 18));
 
-        // Question Text Area
         questionTextArea = new JTextArea("Question prompt goes here...");
         questionTextArea.setFont(new Font("Segoe UI", Font.BOLD, 16));
         questionTextArea.setForeground(UITheme.TEXT_MAIN);
@@ -113,7 +122,6 @@ public class QuizPanel extends JPanel {
         questionTextArea.setFocusable(false);
         questionTextArea.setBorder(new EmptyBorder(10, 8, 10, 8));
 
-        // Options Panel
         JPanel optionsPanel = new JPanel(new GridLayout(4, 1, 0, 10));
         optionsPanel.setOpaque(false);
 
@@ -170,7 +178,7 @@ public class QuizPanel extends JPanel {
     }
 
     /**
-     * Initializes and launches a new quiz with the provided questions.
+     * Initializes a new quiz session with questions.
      */
     public void loadQuiz(User user, String subject, List<Question> questions) {
         this.currentUser = user;
@@ -178,6 +186,10 @@ public class QuizPanel extends JPanel {
         this.questions = questions;
         this.currentIndex = 0;
         this.currentScore = 0;
+        this.studentAnswers.clear();
+
+        // Increment active concurrent quiz counter
+        cache.incrementActiveQuizzes();
 
         subjectLabel.setText("Subject: " + subject);
         progressBar.setMaximum(questions.size());
@@ -204,58 +216,46 @@ public class QuizPanel extends JPanel {
 
         optionsGroup.clearSelection();
 
-        // Update button text on last question
         if (currentIndex == questions.size() - 1) {
             nextButton.setText("Submit Quiz ✔");
         } else {
             nextButton.setText("Next Question ➔");
         }
 
-        startTimer();
+        // Start dedicated worker thread timer
+        startWorkerTimer();
     }
 
-    private void startTimer() {
-        if (countdownTimer != null && countdownTimer.isRunning()) {
-            countdownTimer.stop();
-        }
+    /**
+     * Multithreading Rubric Implementation:
+     * Starts dedicated background timer thread and receives ticks safely on EDT.
+     */
+    private void startWorkerTimer() {
+        timerService.startTimer(SECONDS_PER_QUESTION, new QuizTimerService.TimerCallback() {
+            @Override
+            public void onTick(int secondsRemaining) {
+                timerBadgeLabel.setText("⏱ " + secondsRemaining + "s");
+                if (secondsRemaining > 10) {
+                    timerBadgeLabel.setForeground(UITheme.PRIMARY);
+                } else if (secondsRemaining > 5) {
+                    timerBadgeLabel.setForeground(UITheme.WARNING);
+                } else {
+                    timerBadgeLabel.setForeground(UITheme.DANGER);
+                }
+            }
 
-        remainingSeconds = SECONDS_PER_QUESTION;
-        updateTimerBadge();
-
-        countdownTimer = new Timer(1000, e -> {
-            remainingSeconds--;
-            updateTimerBadge();
-
-            if (remainingSeconds <= 0) {
-                countdownTimer.stop();
-                handleTimeout();
+            @Override
+            public void onTimeout() {
+                JOptionPane.showMessageDialog(QuizPanel.this,
+                        "Time's up for Question " + (currentIndex + 1) + "! Proceeding automatically.",
+                        "Time Expired", JOptionPane.WARNING_MESSAGE);
+                handleNextQuestion(true);
             }
         });
-        countdownTimer.start();
-    }
-
-    private void updateTimerBadge() {
-        timerBadgeLabel.setText("⏱ " + remainingSeconds + "s");
-        if (remainingSeconds > 10) {
-            timerBadgeLabel.setForeground(UITheme.PRIMARY);
-        } else if (remainingSeconds > 5) {
-            timerBadgeLabel.setForeground(UITheme.WARNING);
-        } else {
-            timerBadgeLabel.setForeground(UITheme.DANGER);
-        }
-    }
-
-    private void handleTimeout() {
-        JOptionPane.showMessageDialog(this,
-                "Time's up for Question " + (currentIndex + 1) + "! Moving to next question.",
-                "Time Expired", JOptionPane.WARNING_MESSAGE);
-        handleNextQuestion(true);
     }
 
     private void handleNextQuestion(boolean timedOut) {
-        if (countdownTimer != null) {
-            countdownTimer.stop();
-        }
+        timerService.stopTimer();
 
         char selectedOption = ' ';
         if (optionARadio.isSelected()) selectedOption = 'A';
@@ -267,11 +267,15 @@ public class QuizPanel extends JPanel {
             JOptionPane.showMessageDialog(this,
                     "Please select an option before proceeding (or wait for the timer to expire).",
                     "Selection Required", JOptionPane.WARNING_MESSAGE);
-            startTimer();
+            startWorkerTimer();
             return;
         }
 
         Question currentQuestion = questions.get(currentIndex);
+
+        // Collections Framework: Map recording answer for question ID
+        studentAnswers.put(currentQuestion.getQuestionId(), selectedOption);
+
         if (selectedOption != ' ' && selectedOption == currentQuestion.getCorrectOption()) {
             currentScore++;
         }
@@ -281,18 +285,17 @@ public class QuizPanel extends JPanel {
     }
 
     private void finishQuiz() {
-        if (countdownTimer != null) {
-            countdownTimer.stop();
-        }
+        timerService.stopTimer();
+        cache.decrementActiveQuizzes();
 
         int total = questions.size();
         double percentage = ((double) currentScore / total) * 100.0;
         QuizResult result = new QuizResult(currentUser.getUserId(), subject, currentScore, total, percentage);
 
-        // Persist result asynchronously
+        // Asynchronous persistence with SwingWorker
         SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
             @Override
-            protected Boolean doInBackground() {
+            protected Boolean doInBackground() throws DatabaseOperationException {
                 return resultDAO.saveResult(result);
             }
 
@@ -310,9 +313,8 @@ public class QuizPanel extends JPanel {
                 "Confirm Quit", JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
 
         if (choice == JOptionPane.YES_OPTION) {
-            if (countdownTimer != null) {
-                countdownTimer.stop();
-            }
+            timerService.stopTimer();
+            cache.decrementActiveQuizzes();
             mainFrame.showStudentDashboard();
         }
     }

@@ -1,45 +1,49 @@
 package com.quizbyte.model;
 
 /**
- * Model representing a registered user in Quizbyte.
- * Roles can be 'STUDENT' or 'ADMIN'.
+ * Concrete model representing a registered user in Quizbyte.
+ * Demonstrates OOP Inheritance by extending the abstract Person class.
  */
-public class User {
-    private int userId;
-    private String username;
+public class User extends Person {
+
     private String password;
-    private String role;
 
     public User() {
+        super();
     }
 
     public User(String username, String password, String role) {
-        this.username = username;
+        super(username, role);
         this.password = password;
-        this.role = role;
     }
 
     public User(int userId, String username, String password, String role) {
-        this.userId = userId;
-        this.username = username;
+        super(userId, username, role);
         this.password = password;
-        this.role = role;
     }
 
+    // Polymorphic implementation of Person's abstract method
+    @Override
+    public void displayRoleBadge() {
+        System.out.println(getRoleBadge());
+    }
+
+    @Override
+    public String getRoleBadge() {
+        if (isAdmin()) {
+            return "[🛡️ ADMINISTRATOR]";
+        } else {
+            return "[🎓 STUDENT]";
+        }
+    }
+
+    // Backward-compatible alias getters/setters for userId
     public int getUserId() {
-        return userId;
+        return getId();
     }
 
     public void setUserId(int userId) {
-        this.userId = userId;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public void setUsername(String username) {
-        this.username = username;
+        setId(userId);
     }
 
     public String getPassword() {
@@ -50,28 +54,13 @@ public class User {
         this.password = password;
     }
 
-    public String getRole() {
-        return role;
-    }
-
-    public void setRole(String role) {
-        this.role = role;
-    }
-
-    public boolean isAdmin() {
-        return "ADMIN".equalsIgnoreCase(this.role);
-    }
-
-    public boolean isStudent() {
-        return "STUDENT".equalsIgnoreCase(this.role);
-    }
-
     @Override
     public String toString() {
         return "User{" +
-                "userId=" + userId +
-                ", username='" + username + '\'' +
-                ", role='" + role + '\'' +
+                "id=" + getId() +
+                ", username='" + getUsername() + '\'' +
+                ", role='" + getRole() + '\'' +
+                ", badge='" + getRoleBadge() + '\'' +
                 '}';
     }
 }

@@ -1,6 +1,7 @@
 package com.quizbyte.dao;
 
 import com.quizbyte.config.DatabaseConfig;
+import com.quizbyte.exception.DatabaseOperationException;
 import com.quizbyte.model.User;
 
 import java.sql.Connection;
@@ -10,20 +11,47 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Data Access Object for User entity.
- * Handles database operations for user registration, authentication, and retrieval.
+ * Implements generic BaseDAO<User> contract and JDBC best practices
+ * (PreparedStatement, try-with-resources, explicit custom exception handling).
  */
-public class UserDAO {
+public class UserDAO implements BaseDAO<User> {
+
+    // =========================================================================
+    // BaseDAO<User> CONTRACT IMPLEMENTATIONS
+    // =========================================================================
+
+    @Override
+    public boolean save(User user) throws DatabaseOperationException {
+        return registerUser(user);
+    }
+
+    @Override
+    public Optional<User> findById(int id) throws DatabaseOperationException {
+        User user = getUserById(id);
+        return Optional.ofNullable(user);
+    }
+
+    @Override
+    public List<User> findAll() throws DatabaseOperationException {
+        return getAllUsers();
+    }
+
+    // =========================================================================
+    // USER SPECIFIC OPERATIONS
+    // =========================================================================
 
     /**
      * Checks if a user already exists with the given username.
      *
      * @param username username to verify
      * @return true if user exists, false otherwise
+     * @throws DatabaseOperationException if database query fails
      */
-    public boolean userExists(String username) {
+    public boolean userExists(String username) throws DatabaseOperationException {
         String sql = "SELECT 1 FROM users WHERE username = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -33,8 +61,7 @@ public class UserDAO {
                 return rs.next();
             }
         } catch (SQLException e) {
-            System.err.println("[UserDAO] Error checking if user exists: " + e.getMessage());
-            return false;
+            throw new DatabaseOperationException("Failed to verify if username exists: " + username, e);
         }
     }
 
@@ -43,8 +70,9 @@ public class UserDAO {
      *
      * @param user User object containing username, password, and role
      * @return true if successfully inserted, false otherwise
+     * @throws DatabaseOperationException if database query fails
      */
-    public boolean registerUser(User user) {
+    public boolean registerUser(User user) throws DatabaseOperationException {
         String sql = "INSERT INTO users (username, password, role) VALUES (?, ?, ?)";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -64,8 +92,7 @@ public class UserDAO {
             }
             return false;
         } catch (SQLException e) {
-            System.err.println("[UserDAO] Error registering user: " + e.getMessage());
-            return false;
+            throw new DatabaseOperationException("Failed to register new user: " + user.getUsername(), e);
         }
     }
 
@@ -75,8 +102,9 @@ public class UserDAO {
      * @param username user's username
      * @param password user's password
      * @return User object if authenticated, or null if invalid credentials
+     * @throws DatabaseOperationException if query fails
      */
-    public User login(String username, String password) {
+    public User login(String username, String password) throws DatabaseOperationException {
         String sql = "SELECT user_id, username, password, role FROM users WHERE username = ? AND password = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -95,7 +123,7 @@ public class UserDAO {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[UserDAO] Database error during login: " + e.getMessage());
+            throw new DatabaseOperationException("Database error during login for user: " + username, e);
         }
         return null;
     }
@@ -104,8 +132,9 @@ public class UserDAO {
      * Retrieves all registered users in the system.
      *
      * @return List of all User objects
+     * @throws DatabaseOperationException if query fails
      */
-    public List<User> getAllUsers() {
+    public List<User> getAllUsers() throws DatabaseOperationException {
         List<User> users = new ArrayList<>();
         String sql = "SELECT user_id, username, password, role FROM users ORDER BY user_id ASC";
         try (Connection conn = DatabaseConfig.getConnection();
@@ -121,7 +150,7 @@ public class UserDAO {
                 ));
             }
         } catch (SQLException e) {
-            System.err.println("[UserDAO] Error fetching all users: " + e.getMessage());
+            throw new DatabaseOperationException("Error retrieving registered users list", e);
         }
         return users;
     }
@@ -131,8 +160,9 @@ public class UserDAO {
      *
      * @param userId user ID
      * @return User object or null
+     * @throws DatabaseOperationException if query fails
      */
-    public User getUserById(int userId) {
+    public User getUserById(int userId) throws DatabaseOperationException {
         String sql = "SELECT user_id, username, password, role FROM users WHERE user_id = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -149,7 +179,7 @@ public class UserDAO {
                 }
             }
         } catch (SQLException e) {
-            System.err.println("[UserDAO] Error fetching user by ID: " + e.getMessage());
+            throw new DatabaseOperationException("Error fetching user by ID: " + userId, e);
         }
         return null;
     }

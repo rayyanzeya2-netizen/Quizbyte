@@ -1,10 +1,13 @@
 package com.quizbyte.service;
 
 import com.quizbyte.dao.UserDAO;
+import com.quizbyte.exception.AuthenticationException;
+import com.quizbyte.exception.DatabaseOperationException;
 import com.quizbyte.model.User;
 
 /**
- * Service class handling user authentication, session state, and registration validation.
+ * Service managing user authentication, registration, validation, and session state.
+ * Employs custom exception handling and method overloading.
  */
 public class AuthService {
 
@@ -22,49 +25,59 @@ public class AuthService {
     }
 
     /**
-     * Authenticates a user and sets the current active session.
+     * Authenticates a user against database records.
      *
-     * @param username user username
-     * @param password user password
-     * @return true if login succeeds, false otherwise
+     * @param username username entered
+     * @param password password entered
+     * @return authenticated User instance
+     * @throws AuthenticationException    if credentials are invalid
+     * @throws DatabaseOperationException if database query fails
      */
-    public boolean login(String username, String password) {
+    public User login(String username, String password) throws AuthenticationException, DatabaseOperationException {
         if (username == null || username.trim().isEmpty() || password == null || password.trim().isEmpty()) {
-            System.out.println("(!) Username and password cannot be empty.");
-            return false;
+            throw new AuthenticationException("Username and password must not be empty.");
         }
 
         User user = userDAO.login(username.trim(), password);
-        if (user != null) {
-            this.currentUser = user;
-            return true;
+        if (user == null) {
+            throw new AuthenticationException("Invalid username or password. Please verify your credentials.");
         }
-        return false;
+
+        this.currentUser = user;
+        return user;
     }
 
     /**
-     * Validates and registers a new student or admin.
+     * Overloaded register method with default STUDENT role.
+     */
+    public boolean register(String username, String password) throws AuthenticationException, DatabaseOperationException {
+        return register(username, password, "STUDENT");
+    }
+
+    /**
+     * Registers a new user with validation and custom exception signaling.
      *
      * @param username desired username
      * @param password desired password
-     * @param role role ('STUDENT' or 'ADMIN')
-     * @return true if registration succeeds, false otherwise
+     * @param role     user role ('STUDENT' or 'ADMIN')
+     * @return true if successfully created
+     * @throws AuthenticationException    if validation constraints are violated
+     * @throws DatabaseOperationException if database error occurs
      */
-    public boolean register(String username, String password, String role) {
+    public boolean register(String username, String password, String role) 
+            throws AuthenticationException, DatabaseOperationException {
+
         if (username == null || username.trim().length() < 3) {
-            System.out.println("(!) Username must be at least 3 characters long.");
-            return false;
+            throw new AuthenticationException("Username must be at least 3 characters long.");
         }
 
         if (password == null || password.trim().length() < 4) {
-            System.out.println("(!) Password must be at least 4 characters long.");
-            return false;
+            throw new AuthenticationException("Password must be at least 4 characters long.");
         }
 
         String sanitizedUsername = username.trim();
         if (userDAO.userExists(sanitizedUsername)) {
-            System.out.println("(!) Username '" + sanitizedUsername + "' is already taken. Please choose another.");
-            return false;
+            throw new AuthenticationException("Username '" + sanitizedUsername + "' is already taken. Please choose another.");
         }
 
         String assignedRole = (role != null && !role.trim().isEmpty()) ? role.trim().toUpperCase() : "STUDENT";
@@ -73,11 +86,10 @@ public class AuthService {
     }
 
     /**
-     * Ends the current user session.
+     * Clears current session.
      */
     public void logout() {
         if (currentUser != null) {
-            System.out.println("[Session] User '" + currentUser.getUsername() + "' logged out successfully.");
             currentUser = null;
         }
     }

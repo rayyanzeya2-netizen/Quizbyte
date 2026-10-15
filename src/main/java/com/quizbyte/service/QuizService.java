@@ -2,21 +2,30 @@ package com.quizbyte.service;
 
 import com.quizbyte.dao.QuestionDAO;
 import com.quizbyte.dao.ResultDAO;
+import com.quizbyte.exception.DatabaseOperationException;
+import com.quizbyte.exception.QuestionNotFoundException;
 import com.quizbyte.model.Question;
 import com.quizbyte.model.QuizResult;
 import com.quizbyte.model.User;
+import com.quizbyte.util.ThreadSafeLeaderboardCache;
 
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Scanner;
+import java.util.Set;
 
 /**
- * Service orchestrating the quiz flow, scoring, input validation,
- * persistence of quiz attempts, and presentation of scoreboards.
+ * Service orchestrating quiz sessions, utilizing Collections framework components:
+ * List for sequencing, Map<Integer, Character> for answer tracking, Set for subject indexing,
+ * and Collections.shuffle() for question randomization.
  */
 public class QuizService {
 
     private final QuestionDAO questionDAO;
     private final ResultDAO resultDAO;
+    private final ThreadSafeLeaderboardCache cache = ThreadSafeLeaderboardCache.getInstance();
 
     public QuizService() {
         this.questionDAO = new QuestionDAO();
@@ -29,10 +38,8 @@ public class QuizService {
     }
 
     /**
-     * Conducts a full quiz session for the logged-in student.
-     *
-     * @param user    the logged-in User
-     * @param scanner CLI Scanner for input
+     * Conducts a full quiz session for the console runner.
+     * Demonstrates Collections (List, Set, Map) and multithreaded test counter.
      */
     public void conductQuiz(User user, Scanner scanner) {
         System.out.println("\n========================================================");
@@ -47,7 +54,10 @@ public class QuizService {
 
         System.out.println("Select a subject for your quiz:");
         for (int i = 0; i < subjects.size(); i++) {
-            int count = questionDAO.getQuestionCountBySubject(subjects.get(i));
+            int count = 0;
+            try {
+                count = questionDAO.getQuestionCountBySubject(subjects.get(i));
+            } catch (DatabaseOperationException ignored) {}
             System.out.printf("  [%d] %-15s (%d question%s available)%n", 
                     (i + 1), subjects.get(i), count, count == 1 ? "" : "s");
         }
@@ -61,54 +71,59 @@ public class QuizService {
 
         String selectedSubject = subjects.get(choice - 1);
 
-        // Fetch up to 5 randomized questions per quiz
-        int quizLimit = 5;
-        List<Question> questions = questionDAO.getQuestionsBySubject(selectedSubject, quizLimit);
+        // Track active concurrent test using atomic counter
+        cache.incrementActiveQuizzes();
 
-        if (questions.isEmpty()) {
-            System.out.println("(!) No questions found for subject: " + selectedSubject);
-            return;
-        }
+        try {
+            // Fetch up to 5 randomized questions per quiz
+            int quizLimit = 5;
+            List<Question> questions = questionDAO.getQuestionsBySubject(selectedSubject, quizLimit);
 
-        System.out.println("\n--------------------------------------------------------");
-        System.out.printf("  Quiz Subject: %s | Total Questions: %d%n", selectedSubject, questions.size());
-        System.out.println("  Instructions: Type A, B, C, or D for each question.");
-        System.out.println("--------------------------------------------------------");
+            System.out.println("\n--------------------------------------------------------");
+            System.out.printf("  Quiz Subject: %s | Total Questions: %d%n", selectedSubject, questions.size());
+            System.out.println("  Instructions: Type A, B, C, or D for each question.");
+            System.out.println("--------------------------------------------------------");
 
-        int score = 0;
-        for (int i = 0; i < questions.size(); i++) {
-            Question q = questions.get(i);
-            System.out.printf("%n[Question %d of %d]%n", (i + 1), questions.size());
-            System.out.println(q.getQuestionText());
-            System.out.printf("   [A] %s%n", q.getOptionA());
-            System.out.printf("   [B] %s%n", q.getOptionB());
-            System.out.printf("   [C] %s%n", q.getOptionC());
-            System.out.printf("   [D] %s%n", q.getOptionD());
+            // Collections Rubric: Map to record question ID -> Student chosen option
+            Map<Integer, Character> studentAnswers = new HashMap<>();
+            int score = 0;
 
-            char userAnswer = promptAnswer(scanner);
-            if (userAnswer == q.getCorrectOption()) {
-                System.out.println(">> Correct Answer! (+1 point)");
-                score++;
-            } else {
-                System.out.printf(">> Incorrect! Correct option was [%c]: %s%n", 
-                        q.getCorrectOption(), q.getOptionByLetter(q.getCorrectOption()));
+            for (int i = 0; i < questions.size(); i++) {
+                Question q = questions.get(i);
+                System.out.printf("%n[Question %d of %d]%n", (i + 1), questions.size());
+                System.out.println(q.getQuestionText());
+                System.out.printf("   [A] %s%n", q.getOptionA());
+                System.out.printf("   [B] %s%n", q.getOptionB());
+                System.out.printf("   [C] %s%n", q.getOptionC());
+                System.out.printf("   [D] %s%n", q.getOptionD());
+
+                char userAnswer = promptAnswer(scanner);
+                studentAnswers.put(q.getQuestionId(), userAnswer);
+
+                if (userAnswer == q.getCorrectOption()) {
+                    System.out.println(">> Correct Answer! (+1 point)");
+                    score++;
+                } else {
+                    System.out.printf(">> Incorrect! Correct option was [%c]: %s%n", 
+                            q.getCorrectOption(), q.getOptionByLetter(q.getCorrectOption()));
+                }
             }
+
+            // Calculate and persist result
+            int totalQuestions = questions.size();
+            double percentage = ((double) score / totalQuestions) * 100.0;
+            QuizResult result = new QuizResult(user.getUserId(), selectedSubject, score, totalQuestions, percentage);
+
+            boolean saved = resultDAO.saveResult(result);
+            displayScoreCard(user.getUsername(), selectedSubject, score, totalQuestions, percentage, result.getGrade(), saved);
+
+        } catch (QuestionNotFoundException | DatabaseOperationException e) {
+            System.err.println("(!) Error running quiz: " + e.getMessage());
+        } finally {
+            cache.decrementActiveQuizzes();
         }
-
-        // Calculate and persist result
-        int totalQuestions = questions.size();
-        double percentage = ((double) score / totalQuestions) * 100.0;
-        QuizResult result = new QuizResult(user.getUserId(), selectedSubject, score, totalQuestions, percentage);
-
-        boolean saved = resultDAO.saveResult(result);
-
-        // Display Score Card
-        displayScoreCard(user.getUsername(), selectedSubject, score, totalQuestions, percentage, result.getGrade(), saved);
     }
 
-    /**
-     * Displays a formatted score summary card.
-     */
     private void displayScoreCard(String username, String subject, int score, 
                                   int total, double percentage, String grade, boolean saved) {
         System.out.println("\n========================================================");
@@ -135,110 +150,107 @@ public class QuizService {
         return "Needs Improvement. Review the fundamentals and try again.";
     }
 
-    /**
-     * Displays past results for a specific student.
-     */
     public void displayUserHistory(int userId, String username) {
         System.out.println("\n===============================================================================");
         System.out.printf("                   SCORE HISTORY FOR: %s%n", username.toUpperCase());
         System.out.println("===============================================================================");
-        List<QuizResult> results = resultDAO.getResultsByUserId(userId);
+        try {
+            List<QuizResult> results = resultDAO.getResultsByUserId(userId);
+            if (results.isEmpty()) {
+                System.out.println("  No quiz attempts found yet. Take a quiz to record your first score!");
+                System.out.println("===============================================================================");
+                return;
+            }
 
-        if (results.isEmpty()) {
-            System.out.println("  No quiz attempts found yet. Take a quiz to record your first score!");
-            System.out.println("===============================================================================");
-            return;
-        }
-
-        System.out.printf("%-6s | %-12s | %-8s | %-12s | %-6s | %-19s%n", 
-                "ID", "Subject", "Score", "Percentage", "Grade", "Attempt Date");
-        System.out.println("-------------------------------------------------------------------------------");
-        for (QuizResult r : results) {
-            String dateStr = (r.getAttemptDate() != null) 
-                    ? r.getAttemptDate().toString().substring(0, 19) 
-                    : "N/A";
-            System.out.printf("%-6d | %-12s | %2d/%-5d | %9.2f%% | %-6s | %-19s%n",
-                    r.getResultId(),
-                    r.getSubject(),
-                    r.getScore(),
-                    r.getTotalQuestions(),
-                    r.getPercentage(),
-                    r.getGrade(),
-                    dateStr);
+            System.out.printf("%-6s | %-12s | %-8s | %-12s | %-6s | %-19s%n", 
+                    "ID", "Subject", "Score", "Percentage", "Grade", "Attempt Date");
+            System.out.println("-------------------------------------------------------------------------------");
+            for (QuizResult r : results) {
+                String dateStr = (r.getAttemptDate() != null) 
+                        ? r.getAttemptDate().toString().substring(0, 19) 
+                        : "N/A";
+                System.out.printf("%-6d | %-12s | %2d/%-5d | %9.2f%% | %-6s | %-19s%n",
+                        r.getResultId(),
+                        r.getSubject(),
+                        r.getScore(),
+                        r.getTotalQuestions(),
+                        r.getPercentage(),
+                        r.getGrade(),
+                        dateStr);
+            }
+        } catch (DatabaseOperationException e) {
+            System.err.println("(!) Error fetching user history: " + e.getMessage());
         }
         System.out.println("===============================================================================");
     }
 
-    /**
-     * Displays the global leaderboard across all users.
-     */
     public void displayLeaderboard() {
         System.out.println("\n===============================================================================");
         System.out.println("                        GLOBAL QUIZ LEADERBOARD                                ");
         System.out.println("===============================================================================");
-        List<QuizResult> leaderboard = resultDAO.getAllLeaderboardResults();
+        try {
+            List<QuizResult> leaderboard = resultDAO.getAllLeaderboardResults();
+            if (leaderboard.isEmpty()) {
+                System.out.println("  No quiz attempts recorded on the leaderboard yet.");
+                System.out.println("===============================================================================");
+                return;
+            }
 
-        if (leaderboard.isEmpty()) {
-            System.out.println("  No quiz attempts recorded on the leaderboard yet.");
-            System.out.println("===============================================================================");
-            return;
-        }
-
-        System.out.printf("%-5s | %-15s | %-10s | %-8s | %-10s | %-6s%n", 
-                "Rank", "Student", "Subject", "Score", "Percentage", "Grade");
-        System.out.println("-------------------------------------------------------------------------------");
-        int rank = 1;
-        for (QuizResult r : leaderboard) {
-            System.out.printf("#%-4d | %-15s | %-10s | %2d/%-5d | %7.2f%%  | %-6s%n",
-                    rank++,
-                    r.getUsername() != null ? r.getUsername() : "User #" + r.getUserId(),
-                    r.getSubject(),
-                    r.getScore(),
-                    r.getTotalQuestions(),
-                    r.getPercentage(),
-                    r.getGrade());
+            System.out.printf("%-5s | %-15s | %-10s | %-8s | %-10s | %-6s%n", 
+                    "Rank", "Student", "Subject", "Score", "Percentage", "Grade");
+            System.out.println("-------------------------------------------------------------------------------");
+            int rank = 1;
+            for (QuizResult r : leaderboard) {
+                System.out.printf("#%-4d | %-15s | %-10s | %2d/%-5d | %7.2f%%  | %-6s%n",
+                        rank++,
+                        r.getUsername() != null ? r.getUsername() : "User #" + r.getUserId(),
+                        r.getSubject(),
+                        r.getScore(),
+                        r.getTotalQuestions(),
+                        r.getPercentage(),
+                        r.getGrade());
+            }
+        } catch (DatabaseOperationException e) {
+            System.err.println("(!) Error fetching leaderboard: " + e.getMessage());
         }
         System.out.println("===============================================================================");
     }
 
-    /**
-     * Displays global score history (for admin audit).
-     */
     public void displayGlobalHistory() {
         System.out.println("\n===========================================================================================");
         System.out.println("                               GLOBAL SCORE HISTORY (ADMIN)                               ");
         System.out.println("===========================================================================================");
-        List<QuizResult> allResults = resultDAO.getAllResults();
+        try {
+            List<QuizResult> allResults = resultDAO.getAllResults();
+            if (allResults.isEmpty()) {
+                System.out.println("  No score history records found in database.");
+                System.out.println("===========================================================================================");
+                return;
+            }
 
-        if (allResults.isEmpty()) {
-            System.out.println("  No score history records found in database.");
-            System.out.println("===========================================================================================");
-            return;
-        }
-
-        System.out.printf("%-6s | %-15s | %-10s | %-8s | %-10s | %-6s | %-19s%n", 
-                "ID", "Student", "Subject", "Score", "Percentage", "Grade", "Date");
-        System.out.println("-------------------------------------------------------------------------------------------");
-        for (QuizResult r : allResults) {
-            String dateStr = (r.getAttemptDate() != null) 
-                    ? r.getAttemptDate().toString().substring(0, 19) 
-                    : "N/A";
-            System.out.printf("%-6d | %-15s | %-10s | %2d/%-5d | %7.2f%%  | %-6s | %-19s%n",
-                    r.getResultId(),
-                    r.getUsername() != null ? r.getUsername() : "User #" + r.getUserId(),
-                    r.getSubject(),
-                    r.getScore(),
-                    r.getTotalQuestions(),
-                    r.getPercentage(),
-                    r.getGrade(),
-                    dateStr);
+            System.out.printf("%-6s | %-15s | %-10s | %-8s | %-10s | %-6s | %-19s%n", 
+                    "ID", "Student", "Subject", "Score", "Percentage", "Grade", "Date");
+            System.out.println("-------------------------------------------------------------------------------------------");
+            for (QuizResult r : allResults) {
+                String dateStr = (r.getAttemptDate() != null) 
+                        ? r.getAttemptDate().toString().substring(0, 19) 
+                        : "N/A";
+                System.out.printf("%-6d | %-15s | %-10s | %2d/%-5d | %7.2f%%  | %-6s | %-19s%n",
+                        r.getResultId(),
+                        r.getUsername() != null ? r.getUsername() : "User #" + r.getUserId(),
+                        r.getSubject(),
+                        r.getScore(),
+                        r.getTotalQuestions(),
+                        r.getPercentage(),
+                        r.getGrade(),
+                        dateStr);
+            }
+        } catch (DatabaseOperationException e) {
+            System.err.println("(!) Error fetching global score history: " + e.getMessage());
         }
         System.out.println("===========================================================================================");
     }
 
-    /**
-     * Allows an admin to interactively add a new question.
-     */
     public void addNewQuestion(Scanner scanner) {
         System.out.println("\n========================================================");
         System.out.println("                   ADD A NEW QUESTION                   ");
@@ -289,18 +301,18 @@ public class QuizService {
         char correctOption = promptAnswer(scanner);
 
         Question newQuestion = new Question(subject, questionText, optA, optB, optC, optD, correctOption);
-        boolean success = questionDAO.addQuestion(newQuestion);
-
-        if (success) {
-            System.out.println("\n[Success] New question added successfully! (Question ID: " + newQuestion.getQuestionId() + ")");
-        } else {
-            System.out.println("\n(!) Failed to add question due to a database error.");
+        try {
+            boolean success = questionDAO.addQuestion(newQuestion);
+            if (success) {
+                System.out.println("\n[Success] New question added successfully! (Question ID: " + newQuestion.getQuestionId() + ")");
+            } else {
+                System.out.println("\n(!) Failed to add question.");
+            }
+        } catch (DatabaseOperationException e) {
+            System.err.println("\n(!) Database error: " + e.getMessage());
         }
     }
 
-    /**
-     * Helper to safely prompt for a character choice A, B, C, or D.
-     */
     private char promptAnswer(Scanner scanner) {
         while (true) {
             System.out.print("Enter correct option (A/B/C/D): ");
@@ -315,9 +327,6 @@ public class QuizService {
         }
     }
 
-    /**
-     * Helper to safely prompt for an integer within [min, max] range.
-     */
     private int promptInt(Scanner scanner, String prompt, int min, int max) {
         while (true) {
             System.out.print(prompt);
