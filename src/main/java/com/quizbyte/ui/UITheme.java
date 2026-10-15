@@ -4,14 +4,17 @@ import javax.swing.*;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.LineBorder;
+import javax.swing.plaf.basic.BasicButtonUI;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.JTableHeader;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 /**
  * Central styling and design system constants for Quizbyte GUI.
- * Standardizes button visibility, accessible high-contrast palettes,
- * tactile mouse hover effects, and clean table formatting.
+ * Guarantees high-contrast readable buttons and dark slate table headers
+ * by using BasicButtonUI to prevent Windows native Look and Feel overrides.
  */
 public class UITheme {
 
@@ -20,9 +23,9 @@ public class UITheme {
     public static final Color PRIMARY_DARK = new Color(0x1D, 0x4E, 0xD8);    // Deep Blue Hover
     public static final Color PRIMARY_LIGHT = new Color(0xDB, 0xEA, 0xFE);   // Soft Ice Blue
 
-    public static final Color SLATE_DARK = new Color(0x1E, 0x29, 0x3B);      // Slate 800
+    public static final Color SLATE_DARK = new Color(0x1E, 0x29, 0x3B);      // Slate 800 (Header Navy)
     public static final Color SLATE_PANEL = new Color(0x33, 0x41, 0x55);     // Slate 700
-    public static final Color SLATE_BTN = new Color(0x47, 0x55, 0x69);       // Slate 600
+    public static final Color SLATE_BTN = new Color(0x47, 0x55, 0x69);       // Solid Slate 600
     public static final Color SLATE_BTN_HOVER = new Color(0x33, 0x41, 0x55); // Slate 700 Hover
 
     public static final Color BG_LIGHT = new Color(0xF8, 0xFA, 0xFC);        // Clean Off-White
@@ -55,75 +58,29 @@ public class UITheme {
      * Creates a high-contrast Primary action button (e.g. Start Quiz, Submit, Sign In).
      */
     public static JButton createPrimaryButton(String text) {
-        return createStyledButton(text, PRIMARY, Color.WHITE, PRIMARY_DARK, new EmptyBorder(10, 18, 10, 18));
+        return UIUtils.createPrimaryButton(text);
     }
 
     /**
      * Creates a high-contrast Success action button (e.g. Save Question, Create Account).
      */
     public static JButton createSuccessButton(String text) {
-        return createStyledButton(text, SUCCESS, Color.WHITE, SUCCESS_DARK, new EmptyBorder(10, 18, 10, 18));
+        return UIUtils.createSuccessButton(text);
     }
 
     /**
      * Creates a high-contrast Secondary / Utility button (e.g. Refresh, Retake, Back).
-     * Solves washed-out appearance with solid Slate background and white readable text.
+     * Solves the white-on-white text bug by applying solid cool gray (#475569) and white bold text.
      */
     public static JButton createSecondaryButton(String text) {
-        JButton button = new JButton(text);
-        button.setFont(FONT_BODY_BOLD);
-        button.setBackground(SLATE_BTN);
-        button.setForeground(Color.WHITE);
-        button.setFocusPainted(false);
-        button.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        button.setBorder(new CompoundBorder(
-                new LineBorder(SLATE_DARK, 1, true),
-                new EmptyBorder(8, 16, 8, 16)
-        ));
-        button.setOpaque(true);
-
-        button.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseEntered(java.awt.event.MouseEvent evt) {
-                button.setBackground(SLATE_BTN_HOVER);
-            }
-            @Override
-            public void mouseExited(java.awt.event.MouseEvent evt) {
-                button.setBackground(SLATE_BTN);
-            }
-        });
-        return button;
+        return UIUtils.createSecondaryButton(text);
     }
 
     /**
      * Creates a high-contrast Danger / Destructive button (e.g. Log Out, Cancel, Quit).
      */
     public static JButton createDangerButton(String text) {
-        return createStyledButton(text, DANGER, Color.WHITE, DANGER_DARK, new EmptyBorder(8, 16, 8, 16));
-    }
-
-    private static JButton createStyledButton(String text, Color bg, Color fg, Color hoverBg, EmptyBorder padding) {
-        JButton button = new JButton(text);
-        button.setFont(FONT_BODY_BOLD);
-        button.setBackground(bg);
-        button.setForeground(fg);
-        button.setFocusPainted(false);
-        button.setBorderPainted(false);
-        button.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        button.setBorder(padding);
-        button.setOpaque(true);
-
-        button.addMouseListener(new java.awt.event.MouseAdapter() {
-            @Override
-            public void mouseEntered(java.awt.event.MouseEvent evt) {
-                button.setBackground(hoverBg);
-            }
-            @Override
-            public void mouseExited(java.awt.event.MouseEvent evt) {
-                button.setBackground(bg);
-            }
-        });
-        return button;
+        return UIUtils.createDangerButton(text);
     }
 
     /**
@@ -158,28 +115,7 @@ public class UITheme {
      * Styles a JTable with high-contrast header, centered columns, and generous row height.
      */
     public static void styleTable(JTable table) {
-        table.setFont(FONT_BODY);
-        table.setRowHeight(30); // Meets minimum 28px requirement
-        table.setShowGrid(true);
-        table.setGridColor(new Color(0xE2, 0xE8, 0xF0));
-        table.setSelectionBackground(PRIMARY_LIGHT);
-        table.setSelectionForeground(TEXT_MAIN);
-        table.setFillsViewportHeight(true);
-
-        JTableHeader header = table.getTableHeader();
-        header.setFont(FONT_BODY_BOLD);
-        header.setBackground(SLATE_DARK);
-        header.setForeground(Color.WHITE);
-        header.setPreferredSize(new Dimension(header.getWidth(), 38));
-        header.setReorderingAllowed(false);
-
-        // Center align table headers
-        ((DefaultTableCellRenderer) header.getDefaultRenderer()).setHorizontalAlignment(JLabel.CENTER);
-
-        // Center align table contents by default
-        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
-        centerRenderer.setHorizontalAlignment(JLabel.CENTER);
-        table.setDefaultRenderer(Object.class, centerRenderer);
+        UIUtils.styleTable(table);
     }
 
     /**
