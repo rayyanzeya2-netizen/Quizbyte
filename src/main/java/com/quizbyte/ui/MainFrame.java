@@ -1,7 +1,10 @@
 package com.quizbyte.ui;
 
+import com.quizbyte.dao.MessageDAO;
 import com.quizbyte.dao.QuestionDAO;
+import com.quizbyte.dao.ReminderDAO;
 import com.quizbyte.dao.ResultDAO;
+import com.quizbyte.dao.SystemSettingsDAO;
 import com.quizbyte.dao.UserDAO;
 import com.quizbyte.model.Question;
 import com.quizbyte.model.QuizResult;
@@ -13,12 +16,14 @@ import java.util.List;
 
 /**
  * Root JFrame controller managing view transitions via CardLayout.
- * Central coordinator for authentication state and navigation across panels.
+ * Central coordinator for authentication state and navigation across panels for all 3 roles:
+ * ADMIN, QUIZ_CREATOR, and PARTICIPANT.
  */
 public class MainFrame extends JFrame {
 
     public static final String CARD_LOGIN = "LOGIN";
     public static final String CARD_STUDENT = "STUDENT_DASHBOARD";
+    public static final String CARD_CREATOR = "CREATOR_DASHBOARD";
     public static final String CARD_QUIZ = "QUIZ";
     public static final String CARD_RESULT = "RESULT";
     public static final String CARD_ADMIN = "ADMIN_DASHBOARD";
@@ -27,12 +32,16 @@ public class MainFrame extends JFrame {
     private final QuestionDAO questionDAO;
     private final ResultDAO resultDAO;
     private final UserDAO userDAO;
+    private final MessageDAO messageDAO;
+    private final ReminderDAO reminderDAO;
+    private final SystemSettingsDAO systemSettingsDAO;
 
     private final CardLayout cardLayout;
     private final JPanel cardsContainer;
 
     private LoginPanel loginPanel;
     private StudentDashboardPanel studentDashboardPanel;
+    private QuizCreatorDashboardPanel creatorDashboardPanel;
     private QuizPanel quizPanel;
     private ResultSummaryPanel resultSummaryPanel;
     private AdminDashboardPanel adminDashboardPanel;
@@ -45,11 +54,14 @@ public class MainFrame extends JFrame {
         this.questionDAO = new QuestionDAO();
         this.resultDAO = new ResultDAO();
         this.userDAO = new UserDAO();
+        this.messageDAO = new MessageDAO();
+        this.reminderDAO = new ReminderDAO();
+        this.systemSettingsDAO = new SystemSettingsDAO();
 
         // Frame Setup
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(1024, 720);
-        setMinimumSize(new Dimension(880, 620));
+        setSize(1080, 750);
+        setMinimumSize(new Dimension(920, 640));
         setLocationRelativeTo(null);
 
         // Container with CardLayout
@@ -68,12 +80,14 @@ public class MainFrame extends JFrame {
     private void initCards() {
         this.loginPanel = new LoginPanel(this);
         this.studentDashboardPanel = new StudentDashboardPanel(this);
+        this.creatorDashboardPanel = new QuizCreatorDashboardPanel(this);
         this.quizPanel = new QuizPanel(this);
         this.resultSummaryPanel = new ResultSummaryPanel(this);
         this.adminDashboardPanel = new AdminDashboardPanel(this);
 
         cardsContainer.add(loginPanel, CARD_LOGIN);
         cardsContainer.add(studentDashboardPanel, CARD_STUDENT);
+        cardsContainer.add(creatorDashboardPanel, CARD_CREATOR);
         cardsContainer.add(quizPanel, CARD_QUIZ);
         cardsContainer.add(resultSummaryPanel, CARD_RESULT);
         cardsContainer.add(adminDashboardPanel, CARD_ADMIN);
@@ -85,12 +99,21 @@ public class MainFrame extends JFrame {
     }
 
     public void showStudentDashboard() {
-        if (!authService.isLoggedIn() || !authService.isStudent()) {
+        if (!authService.isLoggedIn() || !authService.isParticipant()) {
             showLogin();
             return;
         }
         studentDashboardPanel.refreshData();
         cardLayout.show(cardsContainer, CARD_STUDENT);
+    }
+
+    public void showCreatorDashboard() {
+        if (!authService.isLoggedIn() || !authService.isQuizCreator()) {
+            showLogin();
+            return;
+        }
+        creatorDashboardPanel.refreshData();
+        cardLayout.show(cardsContainer, CARD_CREATOR);
     }
 
     public void showAdminDashboard() {
@@ -123,7 +146,7 @@ public class MainFrame extends JFrame {
                     List<Question> questions = get();
                     if (questions == null || questions.isEmpty()) {
                         JOptionPane.showMessageDialog(MainFrame.this,
-                                "No questions available for " + subject + ". Please ask an Admin to add questions.",
+                                "No approved questions available for " + subject + ". Please ask an Administrator or Quiz Creator.",
                                 "Notice", JOptionPane.INFORMATION_MESSAGE);
                         return;
                     }
@@ -174,5 +197,17 @@ public class MainFrame extends JFrame {
 
     public UserDAO getUserDAO() {
         return userDAO;
+    }
+
+    public MessageDAO getMessageDAO() {
+        return messageDAO;
+    }
+
+    public ReminderDAO getReminderDAO() {
+        return reminderDAO;
+    }
+
+    public SystemSettingsDAO getSystemSettingsDAO() {
+        return systemSettingsDAO;
     }
 }

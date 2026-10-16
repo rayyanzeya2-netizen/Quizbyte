@@ -227,7 +227,14 @@ public class QuizPanel extends JPanel {
     }
 
     private void startWorkerTimer() {
-        timerService.startTimer(SECONDS_PER_QUESTION, new QuizTimerService.TimerCallback() {
+        int duration = SECONDS_PER_QUESTION;
+        if (questions != null && currentIndex < questions.size()) {
+            int qDur = questions.get(currentIndex).getDurationSeconds();
+            if (qDur > 0) {
+                duration = qDur;
+            }
+        }
+        timerService.startTimer(duration, new QuizTimerService.TimerCallback() {
             @Override
             public void onTick(int secondsRemaining) {
                 timerBadgeLabel.setText("Time: " + secondsRemaining + "s");

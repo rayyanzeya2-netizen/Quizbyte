@@ -20,6 +20,8 @@ import java.util.Set;
 /**
  * Data Access Object for Question entity.
  * Implements generic BaseDAO<Question>, Collections (List, Set), and Collections.shuffle().
+ * Supports creator attribution, content approval workflow (PENDING, APPROVED, REJECTED),
+ * and dynamic duration per question.
  */
 public class QuestionDAO implements BaseDAO<Question> {
 
@@ -34,7 +36,8 @@ public class QuestionDAO implements BaseDAO<Question> {
 
     @Override
     public Optional<Question> findById(int id) throws DatabaseOperationException {
-        String sql = "SELECT question_id, subject, question_text, option_a, option_b, option_c, option_d, correct_option " +
+        String sql = "SELECT question_id, creator_id, subject, question_text, option_a, option_b, " +
+                     "option_c, option_d, correct_option, status, duration_seconds " +
                      "FROM questions WHERE question_id = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -46,13 +49,16 @@ public class QuestionDAO implements BaseDAO<Question> {
                     char correctChar = (correctStr != null && !correctStr.isEmpty()) ? correctStr.charAt(0) : ' ';
                     return Optional.of(new Question(
                             rs.getInt("question_id"),
+                            rs.getInt("creator_id"),
                             rs.getString("subject"),
                             rs.getString("question_text"),
                             rs.getString("option_a"),
                             rs.getString("option_b"),
                             rs.getString("option_c"),
                             rs.getString("option_d"),
-                            correctChar
+                            correctChar,
+                            rs.getString("status"),
+                            rs.getInt("duration_seconds")
                     ));
                 }
             }
@@ -72,7 +78,7 @@ public class QuestionDAO implements BaseDAO<Question> {
     // =========================================================================
 
     /**
-     * Retrieves questions for a specific subject, applying Collections.shuffle()
+     * Retrieves APPROVED questions for a specific subject, applying Collections.shuffle()
      * to fulfill the Collections and Generics rubric requirement for randomized test sequencing.
      *
      * @param subject subject category
@@ -85,8 +91,9 @@ public class QuestionDAO implements BaseDAO<Question> {
             throws DatabaseOperationException, QuestionNotFoundException {
 
         List<Question> questions = new ArrayList<>();
-        String sql = "SELECT question_id, subject, question_text, option_a, option_b, option_c, option_d, correct_option " +
-                     "FROM questions WHERE subject = ?";
+        String sql = "SELECT question_id, creator_id, subject, question_text, option_a, option_b, " +
+                     "option_c, option_d, correct_option, status, duration_seconds " +
+                     "FROM questions WHERE subject = ? AND status = 'APPROVED'";
 
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -101,13 +108,16 @@ public class QuestionDAO implements BaseDAO<Question> {
 
                     questions.add(new Question(
                             rs.getInt("question_id"),
+                            rs.getInt("creator_id"),
                             rs.getString("subject"),
                             rs.getString("question_text"),
                             rs.getString("option_a"),
                             rs.getString("option_b"),
                             rs.getString("option_c"),
                             rs.getString("option_d"),
-                            correctChar
+                            correctChar,
+                            rs.getString("status"),
+                            rs.getInt("duration_seconds")
                     ));
                 }
             }
@@ -116,7 +126,7 @@ public class QuestionDAO implements BaseDAO<Question> {
         }
 
         if (questions.isEmpty()) {
-            throw new QuestionNotFoundException("No questions currently found for subject: " + subject);
+            throw new QuestionNotFoundException("No approved questions currently found for subject: " + subject);
         }
 
         // Collections Framework Utility: Shuffle questions in-place for randomized testing
@@ -130,26 +140,34 @@ public class QuestionDAO implements BaseDAO<Question> {
     }
 
     /**
-     * Adds a new question into the database.
+     * Adds a new question into the database with creator attribution, approval status, and duration.
      *
      * @param question Question object to insert
      * @return true if successfully inserted, false otherwise
      * @throws DatabaseOperationException if insert fails
      */
     public boolean addQuestion(Question question) throws DatabaseOperationException {
-        String sql = "INSERT INTO questions (subject, question_text, option_a, option_b, option_c, option_d, correct_option) " +
-                     "VALUES (?, ?, ?, ?, ?, ?, ?)";
+        String sql = "INSERT INTO questions (creator_id, subject, question_text, option_a, option_b, " +
+                     "option_c, option_d, correct_option, status, duration_seconds) " +
+                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 
-            stmt.setString(1, question.getSubject());
-            stmt.setString(2, question.getQuestionText());
-            stmt.setString(3, question.getOptionA());
-            stmt.setString(4, question.getOptionB());
-            stmt.setString(5, question.getOptionC());
-            stmt.setString(6, question.getOptionD());
-            stmt.setString(7, String.valueOf(Character.toUpperCase(question.getCorrectOption())));
+            int creatorId = question.getCreatorId() > 0 ? question.getCreatorId() : 1;
+            String status = question.getStatus() != null ? question.getStatus().toUpperCase() : "PENDING";
+            int duration = question.getDurationSeconds() > 0 ? question.getDurationSeconds() : 30;
+
+            stmt.setInt(1, creatorId);
+            stmt.setString(2, question.getSubject());
+            stmt.setString(3, question.getQuestionText());
+            stmt.setString(4, question.getOptionA());
+            stmt.setString(5, question.getOptionB());
+            stmt.setString(6, question.getOptionC());
+            stmt.setString(7, question.getOptionD());
+            stmt.setString(8, String.valueOf(Character.toUpperCase(question.getCorrectOption())));
+            stmt.setString(9, status);
+            stmt.setInt(10, duration);
 
             int affectedRows = stmt.executeUpdate();
             if (affectedRows > 0) {
@@ -167,15 +185,14 @@ public class QuestionDAO implements BaseDAO<Question> {
     }
 
     /**
-     * Retrieves unique subjects using a Set<String> (HashSet) to demonstrate
-     * Collections Framework Set implementation per marking rubric.
+     * Retrieves unique subjects for APPROVED questions using a Set<String> (HashSet).
      *
      * @return Set of distinct subjects
      * @throws DatabaseOperationException if query fails
      */
     public Set<String> getAvailableSubjectsSet() throws DatabaseOperationException {
         Set<String> subjects = new HashSet<>();
-        String sql = "SELECT DISTINCT subject FROM questions ORDER BY subject ASC";
+        String sql = "SELECT DISTINCT subject FROM questions WHERE status = 'APPROVED' ORDER BY subject ASC";
 
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
@@ -191,7 +208,7 @@ public class QuestionDAO implements BaseDAO<Question> {
     }
 
     /**
-     * Retrieves available subjects as an ordered List<String>.
+     * Retrieves available approved subjects as an ordered List<String>.
      */
     public List<String> getAvailableSubjects() {
         try {
@@ -206,14 +223,14 @@ public class QuestionDAO implements BaseDAO<Question> {
     }
 
     /**
-     * Retrieves the count of questions available for a given subject.
+     * Retrieves the count of APPROVED questions available for a given subject.
      *
      * @param subject subject name
      * @return question count
      * @throws DatabaseOperationException if query fails
      */
     public int getQuestionCountBySubject(String subject) throws DatabaseOperationException {
-        String sql = "SELECT COUNT(*) FROM questions WHERE subject = ?";
+        String sql = "SELECT COUNT(*) FROM questions WHERE subject = ? AND status = 'APPROVED'";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
@@ -230,11 +247,117 @@ public class QuestionDAO implements BaseDAO<Question> {
     }
 
     /**
-     * Retrieves all questions in the database.
+     * Retrieves all questions authored by a specific creator.
+     */
+    public List<Question> getQuestionsByCreator(int creatorId) throws DatabaseOperationException {
+        List<Question> list = new ArrayList<>();
+        String sql = "SELECT question_id, creator_id, subject, question_text, option_a, option_b, " +
+                     "option_c, option_d, correct_option, status, duration_seconds " +
+                     "FROM questions WHERE creator_id = ? ORDER BY question_id DESC";
+
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, creatorId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String correctStr = rs.getString("correct_option");
+                    char correctChar = (correctStr != null && !correctStr.isEmpty()) ? correctStr.charAt(0) : ' ';
+                    list.add(new Question(
+                            rs.getInt("question_id"),
+                            rs.getInt("creator_id"),
+                            rs.getString("subject"),
+                            rs.getString("question_text"),
+                            rs.getString("option_a"),
+                            rs.getString("option_b"),
+                            rs.getString("option_c"),
+                            rs.getString("option_d"),
+                            correctChar,
+                            rs.getString("status"),
+                            rs.getInt("duration_seconds")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            throw new DatabaseOperationException("Error fetching questions for creator ID: " + creatorId, e);
+        }
+        return list;
+    }
+
+    /**
+     * Retrieves all questions with PENDING approval status for Administrator review.
+     */
+    public List<Question> getPendingQuestions() throws DatabaseOperationException {
+        List<Question> list = new ArrayList<>();
+        String sql = "SELECT question_id, creator_id, subject, question_text, option_a, option_b, " +
+                     "option_c, option_d, correct_option, status, duration_seconds " +
+                     "FROM questions WHERE status = 'PENDING' ORDER BY question_id ASC";
+
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                String correctStr = rs.getString("correct_option");
+                char correctChar = (correctStr != null && !correctStr.isEmpty()) ? correctStr.charAt(0) : ' ';
+                list.add(new Question(
+                        rs.getInt("question_id"),
+                        rs.getInt("creator_id"),
+                        rs.getString("subject"),
+                        rs.getString("question_text"),
+                        rs.getString("option_a"),
+                        rs.getString("option_b"),
+                        rs.getString("option_c"),
+                        rs.getString("option_d"),
+                        correctChar,
+                        rs.getString("status"),
+                        rs.getInt("duration_seconds")
+                ));
+            }
+        } catch (SQLException e) {
+            throw new DatabaseOperationException("Error fetching pending questions", e);
+        }
+        return list;
+    }
+
+    /**
+     * Updates the approval status of a question ('APPROVED' or 'REJECTED').
+     */
+    public boolean updateQuestionStatus(int questionId, String newStatus) throws DatabaseOperationException {
+        String sql = "UPDATE questions SET status = ? WHERE question_id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, newStatus.toUpperCase());
+            stmt.setInt(2, questionId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DatabaseOperationException("Error updating status for question ID: " + questionId, e);
+        }
+    }
+
+    /**
+     * Deletes a question from the database.
+     */
+    public boolean deleteQuestion(int questionId) throws DatabaseOperationException {
+        String sql = "DELETE FROM questions WHERE question_id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, questionId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DatabaseOperationException("Error deleting question ID: " + questionId, e);
+        }
+    }
+
+    /**
+     * Retrieves all questions in the database regardless of status.
      */
     public List<Question> getAllQuestions() throws DatabaseOperationException {
         List<Question> list = new ArrayList<>();
-        String sql = "SELECT question_id, subject, question_text, option_a, option_b, option_c, option_d, correct_option " +
+        String sql = "SELECT question_id, creator_id, subject, question_text, option_a, option_b, " +
+                     "option_c, option_d, correct_option, status, duration_seconds " +
                      "FROM questions ORDER BY subject, question_id";
 
         try (Connection conn = DatabaseConfig.getConnection();
@@ -246,13 +369,16 @@ public class QuestionDAO implements BaseDAO<Question> {
                 char correctChar = (correctStr != null && !correctStr.isEmpty()) ? correctStr.charAt(0) : ' ';
                 list.add(new Question(
                         rs.getInt("question_id"),
+                        rs.getInt("creator_id"),
                         rs.getString("subject"),
                         rs.getString("question_text"),
                         rs.getString("option_a"),
                         rs.getString("option_b"),
                         rs.getString("option_c"),
                         rs.getString("option_d"),
-                        correctChar
+                        correctChar,
+                        rs.getString("status"),
+                        rs.getInt("duration_seconds")
                 ));
             }
         } catch (SQLException e) {

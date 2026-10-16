@@ -15,8 +15,8 @@ import java.util.Optional;
 
 /**
  * Data Access Object for User entity.
- * Implements generic BaseDAO<User> contract and JDBC best practices
- * (PreparedStatement, try-with-resources, explicit custom exception handling).
+ * Implements generic BaseDAO<User> contract and full CRUD operations
+ * for the 3-role platform (ADMIN, QUIZ_CREATOR, PARTICIPANT).
  */
 public class UserDAO implements BaseDAO<User> {
 
@@ -46,10 +46,6 @@ public class UserDAO implements BaseDAO<User> {
 
     /**
      * Checks if a user already exists with the given username.
-     *
-     * @param username username to verify
-     * @return true if user exists, false otherwise
-     * @throws DatabaseOperationException if database query fails
      */
     public boolean userExists(String username) throws DatabaseOperationException {
         String sql = "SELECT 1 FROM users WHERE username = ?";
@@ -66,20 +62,18 @@ public class UserDAO implements BaseDAO<User> {
     }
 
     /**
-     * Registers a new user into the database.
-     *
-     * @param user User object containing username, password, and role
-     * @return true if successfully inserted, false otherwise
-     * @throws DatabaseOperationException if database query fails
+     * Registers a new user with email, role (ADMIN, QUIZ_CREATOR, PARTICIPANT), and status.
      */
     public boolean registerUser(User user) throws DatabaseOperationException {
-        String sql = "INSERT INTO users (username, password, role) VALUES (?, ?, ?)";
+        String sql = "INSERT INTO users (username, password, email, role, status) VALUES (?, ?, ?, ?, ?)";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
 
             stmt.setString(1, user.getUsername());
             stmt.setString(2, user.getPassword());
-            stmt.setString(3, user.getRole() != null ? user.getRole().toUpperCase() : "STUDENT");
+            stmt.setString(3, user.getEmail() != null ? user.getEmail() : (user.getUsername() + "@quizbyte.com"));
+            stmt.setString(4, user.getRole() != null ? user.getRole().toUpperCase() : "PARTICIPANT");
+            stmt.setString(5, user.getStatus() != null ? user.getStatus().toUpperCase() : "ACTIVE");
 
             int affectedRows = stmt.executeUpdate();
             if (affectedRows > 0) {
@@ -98,14 +92,9 @@ public class UserDAO implements BaseDAO<User> {
 
     /**
      * Authenticates a user by username and password.
-     *
-     * @param username user's username
-     * @param password user's password
-     * @return User object if authenticated, or null if invalid credentials
-     * @throws DatabaseOperationException if query fails
      */
     public User login(String username, String password) throws DatabaseOperationException {
-        String sql = "SELECT user_id, username, password, role FROM users WHERE username = ? AND password = ?";
+        String sql = "SELECT user_id, username, password, email, role, status FROM users WHERE username = ? AND password = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
@@ -118,7 +107,9 @@ public class UserDAO implements BaseDAO<User> {
                             rs.getInt("user_id"),
                             rs.getString("username"),
                             rs.getString("password"),
-                            rs.getString("role")
+                            rs.getString("email"),
+                            rs.getString("role"),
+                            rs.getString("status")
                     );
                 }
             }
@@ -130,13 +121,10 @@ public class UserDAO implements BaseDAO<User> {
 
     /**
      * Retrieves all registered users in the system.
-     *
-     * @return List of all User objects
-     * @throws DatabaseOperationException if query fails
      */
     public List<User> getAllUsers() throws DatabaseOperationException {
         List<User> users = new ArrayList<>();
-        String sql = "SELECT user_id, username, password, role FROM users ORDER BY user_id ASC";
+        String sql = "SELECT user_id, username, password, email, role, status FROM users ORDER BY user_id ASC";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
@@ -146,7 +134,9 @@ public class UserDAO implements BaseDAO<User> {
                         rs.getInt("user_id"),
                         rs.getString("username"),
                         rs.getString("password"),
-                        rs.getString("role")
+                        rs.getString("email"),
+                        rs.getString("role"),
+                        rs.getString("status")
                 ));
             }
         } catch (SQLException e) {
@@ -157,13 +147,9 @@ public class UserDAO implements BaseDAO<User> {
 
     /**
      * Retrieves a user by their user ID.
-     *
-     * @param userId user ID
-     * @return User object or null
-     * @throws DatabaseOperationException if query fails
      */
     public User getUserById(int userId) throws DatabaseOperationException {
-        String sql = "SELECT user_id, username, password, role FROM users WHERE user_id = ?";
+        String sql = "SELECT user_id, username, password, email, role, status FROM users WHERE user_id = ?";
         try (Connection conn = DatabaseConfig.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
 
@@ -174,7 +160,9 @@ public class UserDAO implements BaseDAO<User> {
                             rs.getInt("user_id"),
                             rs.getString("username"),
                             rs.getString("password"),
-                            rs.getString("role")
+                            rs.getString("email"),
+                            rs.getString("role"),
+                            rs.getString("status")
                     );
                 }
             }
@@ -182,5 +170,80 @@ public class UserDAO implements BaseDAO<User> {
             throw new DatabaseOperationException("Error fetching user by ID: " + userId, e);
         }
         return null;
+    }
+
+    /**
+     * Deletes a user by their ID (cascades to quiz results and questions).
+     */
+    public boolean deleteUser(int userId) throws DatabaseOperationException {
+        String sql = "DELETE FROM users WHERE user_id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setInt(1, userId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DatabaseOperationException("Error deleting user ID: " + userId, e);
+        }
+    }
+
+    /**
+     * Updates a user's role (ADMIN, QUIZ_CREATOR, PARTICIPANT).
+     */
+    public boolean updateUserRole(int userId, String newRole) throws DatabaseOperationException {
+        String sql = "UPDATE users SET role = ? WHERE user_id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, newRole.toUpperCase());
+            stmt.setInt(2, userId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DatabaseOperationException("Error updating role for user ID: " + userId, e);
+        }
+    }
+
+    /**
+     * Updates a user's status (ACTIVE, SUSPENDED).
+     */
+    public boolean updateUserStatus(int userId, String newStatus) throws DatabaseOperationException {
+        String sql = "UPDATE users SET status = ? WHERE user_id = ?";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, newStatus.toUpperCase());
+            stmt.setInt(2, userId);
+            return stmt.executeUpdate() > 0;
+        } catch (SQLException e) {
+            throw new DatabaseOperationException("Error updating status for user ID: " + userId, e);
+        }
+    }
+
+    /**
+     * Retrieves all users having a specific role (e.g. QUIZ_CREATOR).
+     */
+    public List<User> getUsersByRole(String role) throws DatabaseOperationException {
+        List<User> list = new ArrayList<>();
+        String sql = "SELECT user_id, username, password, email, role, status FROM users WHERE role = ? AND status = 'ACTIVE' ORDER BY username ASC";
+        try (Connection conn = DatabaseConfig.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql)) {
+
+            stmt.setString(1, role.toUpperCase());
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    list.add(new User(
+                            rs.getInt("user_id"),
+                            rs.getString("username"),
+                            rs.getString("password"),
+                            rs.getString("email"),
+                            rs.getString("role"),
+                            rs.getString("status")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            throw new DatabaseOperationException("Error fetching users by role: " + role, e);
+        }
+        return list;
     }
 }

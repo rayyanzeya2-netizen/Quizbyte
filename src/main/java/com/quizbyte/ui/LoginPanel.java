@@ -10,9 +10,9 @@ import java.awt.*;
 import java.util.concurrent.ExecutionException;
 
 /**
- * Modern login and student registration panel.
- * Demonstrates robust custom exception handling (AuthenticationException, DatabaseOperationException)
- * and responsive multithreaded background processing with SwingWorker.
+ * Modern login and user registration panel.
+ * Supports the 3-role platform (PARTICIPANT, QUIZ_CREATOR, ADMIN).
+ * Demonstrates robust custom exception handling and multithreaded background processing with SwingWorker.
  */
 public class LoginPanel extends JPanel {
 
@@ -33,6 +33,7 @@ public class LoginPanel extends JPanel {
     private JTextField regUsernameField;
     private JPasswordField regPasswordField;
     private JPasswordField regConfirmPasswordField;
+    private JComboBox<String> regRolePicker;
     private JButton registerButton;
 
     public LoginPanel(MainFrame mainFrame) {
@@ -80,7 +81,7 @@ public class LoginPanel extends JPanel {
     private JPanel buildLoginCard() {
         JPanel card = UITheme.createCardPanel();
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setPreferredSize(new Dimension(380, 420));
+        card.setPreferredSize(new Dimension(380, 430));
 
         JLabel title = new JLabel("Welcome Back");
         title.setFont(UITheme.FONT_TITLE);
@@ -94,7 +95,7 @@ public class LoginPanel extends JPanel {
 
         loginUsernameField = UITheme.createTextField(20);
         loginPasswordField = UITheme.createPasswordField(20);
-        loginRolePicker = new JComboBox<>(new String[]{"STUDENT", "ADMIN"});
+        loginRolePicker = new JComboBox<>(new String[]{"PARTICIPANT", "QUIZ_CREATOR", "ADMIN"});
         loginRolePicker.setFont(UITheme.FONT_BODY);
         loginRolePicker.setBackground(Color.WHITE);
 
@@ -102,7 +103,7 @@ public class LoginPanel extends JPanel {
         loginButton.setAlignmentX(Component.CENTER_ALIGNMENT);
         loginButton.setMaximumSize(new Dimension(Integer.MAX_VALUE, 42));
 
-        JButton switchToRegisterBtn = new JButton("Don't have an account? Register Student");
+        JButton switchToRegisterBtn = new JButton("Don't have an account? Register Now");
         switchToRegisterBtn.setFont(UITheme.FONT_SMALL);
         switchToRegisterBtn.setForeground(UITheme.PRIMARY);
         switchToRegisterBtn.setBorderPainted(false);
@@ -114,14 +115,14 @@ public class LoginPanel extends JPanel {
         card.add(title);
         card.add(Box.createVerticalStrut(4));
         card.add(desc);
-        card.add(Box.createVerticalStrut(20));
+        card.add(Box.createVerticalStrut(16));
 
         card.add(createFieldWrapper("Username", loginUsernameField));
-        card.add(Box.createVerticalStrut(12));
+        card.add(Box.createVerticalStrut(10));
         card.add(createFieldWrapper("Password", loginPasswordField));
-        card.add(Box.createVerticalStrut(12));
+        card.add(Box.createVerticalStrut(10));
         card.add(createFieldWrapper("Role Picker", loginRolePicker));
-        card.add(Box.createVerticalStrut(22));
+        card.add(Box.createVerticalStrut(20));
 
         card.add(loginButton);
         card.add(Box.createVerticalStrut(12));
@@ -137,14 +138,14 @@ public class LoginPanel extends JPanel {
     private JPanel buildRegisterCard() {
         JPanel card = UITheme.createCardPanel();
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
-        card.setPreferredSize(new Dimension(380, 440));
+        card.setPreferredSize(new Dimension(380, 480));
 
-        JLabel title = new JLabel("Create Student Account");
+        JLabel title = new JLabel("Create Account");
         title.setFont(UITheme.FONT_TITLE);
         title.setForeground(UITheme.TEXT_MAIN);
         title.setAlignmentX(Component.CENTER_ALIGNMENT);
 
-        JLabel desc = new JLabel("Join Quizbyte to challenge your knowledge");
+        JLabel desc = new JLabel("Join Quizbyte as a Participant or Quiz Creator");
         desc.setFont(UITheme.FONT_SMALL);
         desc.setForeground(UITheme.TEXT_MUTED);
         desc.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -152,6 +153,9 @@ public class LoginPanel extends JPanel {
         regUsernameField = UITheme.createTextField(20);
         regPasswordField = UITheme.createPasswordField(20);
         regConfirmPasswordField = UITheme.createPasswordField(20);
+        regRolePicker = new JComboBox<>(new String[]{"PARTICIPANT", "QUIZ_CREATOR"});
+        regRolePicker.setFont(UITheme.FONT_BODY);
+        regRolePicker.setBackground(Color.WHITE);
 
         registerButton = UITheme.createSuccessButton("Create Account");
         registerButton.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -169,17 +173,19 @@ public class LoginPanel extends JPanel {
         card.add(title);
         card.add(Box.createVerticalStrut(4));
         card.add(desc);
-        card.add(Box.createVerticalStrut(18));
+        card.add(Box.createVerticalStrut(14));
 
         card.add(createFieldWrapper("New Username (min 3 chars)", regUsernameField));
-        card.add(Box.createVerticalStrut(10));
+        card.add(Box.createVerticalStrut(8));
         card.add(createFieldWrapper("Password (min 4 chars)", regPasswordField));
-        card.add(Box.createVerticalStrut(10));
+        card.add(Box.createVerticalStrut(8));
         card.add(createFieldWrapper("Confirm Password", regConfirmPasswordField));
-        card.add(Box.createVerticalStrut(20));
+        card.add(Box.createVerticalStrut(8));
+        card.add(createFieldWrapper("Account Role", regRolePicker));
+        card.add(Box.createVerticalStrut(16));
 
         card.add(registerButton);
-        card.add(Box.createVerticalStrut(12));
+        card.add(Box.createVerticalStrut(10));
         card.add(switchToLoginBtn);
 
         registerButton.addActionListener(e -> performRegistration());
@@ -238,7 +244,16 @@ public class LoginPanel extends JPanel {
                 try {
                     User user = get();
                     if (user != null) {
-                        if (!user.getRole().equalsIgnoreCase(expectedRole)) {
+                        boolean roleMatches = false;
+                        if ("PARTICIPANT".equalsIgnoreCase(expectedRole) && user.isParticipant()) {
+                            roleMatches = true;
+                        } else if ("QUIZ_CREATOR".equalsIgnoreCase(expectedRole) && user.isQuizCreator()) {
+                            roleMatches = true;
+                        } else if ("ADMIN".equalsIgnoreCase(expectedRole) && user.isAdmin()) {
+                            roleMatches = true;
+                        }
+
+                        if (!roleMatches) {
                             JOptionPane.showMessageDialog(LoginPanel.this,
                                     "Account role mismatch: Your account role is " + user.getRole() +
                                     ", but you selected " + expectedRole + ".",
@@ -249,6 +264,8 @@ public class LoginPanel extends JPanel {
 
                         if (user.isAdmin()) {
                             mainFrame.showAdminDashboard();
+                        } else if (user.isQuizCreator()) {
+                            mainFrame.showCreatorDashboard();
                         } else {
                             mainFrame.showStudentDashboard();
                         }
@@ -277,6 +294,7 @@ public class LoginPanel extends JPanel {
         String username = regUsernameField.getText().trim();
         String password = new String(regPasswordField.getPassword()).trim();
         String confirmPassword = new String(regConfirmPasswordField.getPassword()).trim();
+        String role = (String) regRolePicker.getSelectedItem();
 
         if (username.length() < 3) {
             JOptionPane.showMessageDialog(this, "Username must be at least 3 characters long.",
@@ -302,7 +320,7 @@ public class LoginPanel extends JPanel {
         SwingWorker<Boolean, Void> worker = new SwingWorker<>() {
             @Override
             protected Boolean doInBackground() throws AuthenticationException, DatabaseOperationException {
-                return authService.register(username, password, "STUDENT");
+                return authService.register(username, password, role);
             }
 
             @Override
@@ -313,11 +331,11 @@ public class LoginPanel extends JPanel {
                     boolean created = get();
                     if (created) {
                         JOptionPane.showMessageDialog(LoginPanel.this,
-                                "Account created successfully! You can now log in with your credentials.",
+                                "Account created successfully as " + role + "! You can now log in.",
                                 "Registration Success", JOptionPane.INFORMATION_MESSAGE);
                         loginUsernameField.setText(username);
                         loginPasswordField.setText("");
-                        loginRolePicker.setSelectedItem("STUDENT");
+                        loginRolePicker.setSelectedItem(role);
                         authCardLayout.show(authCardContainer, "LOGIN_MODE");
                     }
                 } catch (ExecutionException ex) {

@@ -7,7 +7,8 @@ import com.quizbyte.model.User;
 
 /**
  * Service managing user authentication, registration, validation, and session state.
- * Employs custom exception handling and method overloading.
+ * Employs custom exception handling, role-based authorization for the 3-role platform
+ * (ADMIN, QUIZ_CREATOR, PARTICIPANT), and account suspension checks.
  */
 public class AuthService {
 
@@ -25,12 +26,12 @@ public class AuthService {
     }
 
     /**
-     * Authenticates a user against database records.
+     * Authenticates a user against database records and checks for suspended account status.
      *
      * @param username username entered
      * @param password password entered
      * @return authenticated User instance
-     * @throws AuthenticationException    if credentials are invalid
+     * @throws AuthenticationException    if credentials are invalid or account is suspended
      * @throws DatabaseOperationException if database query fails
      */
     public User login(String username, String password) throws AuthenticationException, DatabaseOperationException {
@@ -43,15 +44,19 @@ public class AuthService {
             throw new AuthenticationException("Invalid username or password. Please verify your credentials.");
         }
 
+        if (user.isSuspended()) {
+            throw new AuthenticationException("Account is SUSPENDED. Please contact your system administrator.");
+        }
+
         this.currentUser = user;
         return user;
     }
 
     /**
-     * Overloaded register method with default STUDENT role.
+     * Overloaded register method with default PARTICIPANT role.
      */
     public boolean register(String username, String password) throws AuthenticationException, DatabaseOperationException {
-        return register(username, password, "STUDENT");
+        return register(username, password, "PARTICIPANT");
     }
 
     /**
@@ -59,7 +64,7 @@ public class AuthService {
      *
      * @param username desired username
      * @param password desired password
-     * @param role     user role ('STUDENT' or 'ADMIN')
+     * @param role     user role ('PARTICIPANT', 'QUIZ_CREATOR', or 'ADMIN')
      * @return true if successfully created
      * @throws AuthenticationException    if validation constraints are violated
      * @throws DatabaseOperationException if database error occurs
@@ -80,8 +85,9 @@ public class AuthService {
             throw new AuthenticationException("Username '" + sanitizedUsername + "' is already taken. Please choose another.");
         }
 
-        String assignedRole = (role != null && !role.trim().isEmpty()) ? role.trim().toUpperCase() : "STUDENT";
-        User newUser = new User(sanitizedUsername, password, assignedRole);
+        String assignedRole = (role != null && !role.trim().isEmpty()) ? role.trim().toUpperCase() : "PARTICIPANT";
+        String email = sanitizedUsername.toLowerCase() + "@quizbyte.com";
+        User newUser = new User(0, sanitizedUsername, password, email, assignedRole, "ACTIVE");
         return userDAO.registerUser(newUser);
     }
 
@@ -106,7 +112,15 @@ public class AuthService {
         return currentUser != null && currentUser.isAdmin();
     }
 
+    public boolean isQuizCreator() {
+        return currentUser != null && currentUser.isQuizCreator();
+    }
+
+    public boolean isParticipant() {
+        return currentUser != null && currentUser.isParticipant();
+    }
+
     public boolean isStudent() {
-        return currentUser != null && currentUser.isStudent();
+        return isParticipant();
     }
 }

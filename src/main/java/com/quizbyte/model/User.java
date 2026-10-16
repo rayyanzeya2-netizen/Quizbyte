@@ -2,6 +2,7 @@ package com.quizbyte.model;
 
 /**
  * Concrete model representing a registered user in Quizbyte.
+ * Supports the 3-role specification: ADMIN, QUIZ_CREATOR, and PARTICIPANT.
  * Demonstrates OOP Inheritance by extending the abstract Person class.
  */
 public class User extends Person {
@@ -22,6 +23,11 @@ public class User extends Person {
         this.password = password;
     }
 
+    public User(int userId, String username, String password, String email, String role, String status) {
+        super(userId, username, email, role, status);
+        this.password = password;
+    }
+
     // Polymorphic implementation of Person's abstract method
     @Override
     public void displayRoleBadge() {
@@ -32,8 +38,10 @@ public class User extends Person {
     public String getRoleBadge() {
         if (isAdmin()) {
             return "[ADMINISTRATOR]";
+        } else if (isQuizCreator()) {
+            return "[QUIZ CREATOR]";
         } else {
-            return "[STUDENT]";
+            return "[PARTICIPANT]";
         }
     }
 
@@ -59,7 +67,9 @@ public class User extends Person {
         return "User{" +
                 "id=" + getId() +
                 ", username='" + getUsername() + '\'' +
+                ", email='" + getEmail() + '\'' +
                 ", role='" + getRole() + '\'' +
+                ", status='" + getStatus() + '\'' +
                 ", badge='" + getRoleBadge() + '\'' +
                 '}';
     }
